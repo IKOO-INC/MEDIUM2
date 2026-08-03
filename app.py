@@ -544,8 +544,8 @@ def get_ai_messages(session_id, limit=40):
 def get_gemini_api_key():
     """Ambil API key Gemini dari environment yang didukung SDK Google."""
     return (
-        'AQ.Ab8RN6IBfbcOgFg7sKty0X_SzDM-1wlcV_Y6kvKLBw_UyH6oDw'
-        or 'AQ.Ab8RN6IBfbcOgFg7sKty0X_SzDM-1wlcV_Y6kvKLBw_UyH6oDw'
+        os.getenv('KEY')
+        or os.getenv('KEY')
     )
 
 
