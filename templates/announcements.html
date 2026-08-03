@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+{% block title %}Papan Pengumuman{% endblock %}
+{% block breadcrumb %}Pengumuman{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-text">
+        <span class="eyebrow">Information Board</span>
+        <h1 class="hero-title">Papan <span class="accent">Pengumuman</span></h1>
+        <p class="hero-sub">Pengumuman memiliki halaman tersendiri dan tidak ditampilkan pada dashboard.</p>
+    </div>
+</section>
+
+{% if error %}<div class="alert danger section-gap">{{ error }}</div>{% endif %}
+
+<div class="grid announcement-layout">
+    <section class="col-5 card">
+        <div class="card-head"><div class="card-title-wrap"><span class="eyebrow">Publish</span><h2 class="card-title">Buat Pengumuman</h2></div></div>
+        <form method="POST">
+            <div class="form-grid form-grid--single">
+                <div class="field">
+                    <label class="field-label" for="announcementTitle">Judul</label>
+                    <input class="input" id="announcementTitle" name="title" type="text" placeholder="Judul pengumuman" required>
+                </div>
+                <div class="field">
+                    <label class="field-label" for="announcementContent">Isi pengumuman</label>
+                    <textarea class="input textarea announcement-textarea" id="announcementContent" name="content" rows="8" placeholder="Tulis isi pengumuman. Baris baru akan tetap tampil." required></textarea>
+                </div>
+                <div class="field">
+                    <label class="field-label" for="announcementAuthor">Pembuat</label>
+                    <select class="select select--full" id="announcementAuthor" name="author">
+                        <option value="Admin">Admin</option>
+                        {% for member in members %}<option value="{{ member.name }}">{{ member.name }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="field">
+                    <label class="field-label" for="announcementPriority">Prioritas</label>
+                    <select class="select select--full" id="announcementPriority" name="priority">
+                        <option value="normal">Normal</option>
+                        <option value="important">Penting</option>
+                        <option value="urgent">Mendesak</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-actions"><span class="spacer"></span><button class="btn btn--primary" type="submit">Terbitkan</button></div>
+        </form>
+    </section>
+
+    <section class="col-7 card">
+        <div class="card-head">
+            <div class="card-title-wrap"><span class="eyebrow">Board</span><h2 class="card-title">Pengumuman Terbaru</h2></div>
+            <span class="badge primary">{{ announcements|length }} item</span>
+        </div>
+        <div class="announcement-list">
+            {% for item in announcements %}
+            <article class="announcement-item announcement-item--{{ item.priority or 'normal' }}">
+                <div class="announcement-head">
+                    <div>
+                        <span class="badge {{ 'danger' if item.priority == 'urgent' else 'warning' if item.priority == 'important' else 'primary' }}">{{ 'Mendesak' if item.priority == 'urgent' else 'Penting' if item.priority == 'important' else 'Normal' }}</span>
+                        <h3>{{ item.title }}</h3>
+                    </div>
+                    <form method="POST" action="{{ url_for('delete_announcement', announcement_id=item._id) }}" onsubmit="return confirm('Hapus pengumuman ini?')">
+                        <button class="btn btn--danger btn--small" type="submit">Hapus</button>
+                    </form>
+                </div>
+                <p class="preserve-lines announcement-content">{{ item.content }}</p>
+                <div class="announcement-meta">
+                    <span>Oleh {{ item.author or 'Admin' }}</span>
+                    <span>{{ item.created_at.strftime('%d/%m/%Y %H:%M') if item.created_at else '-' }}</span>
+                </div>
+            </article>
+            {% else %}
+            <div class="empty-state"><strong>Belum ada pengumuman</strong><span>Pengumuman yang diterbitkan akan tampil di halaman ini.</span></div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}

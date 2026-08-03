@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}QR Anggota{% endblock %}
+{% block breadcrumb %}QR Anggota{% endblock %}
+
+{% block content %}
+<section class="hero qr-page-hero">
+    <div class="hero-text">
+        <span class="eyebrow">Member QR Cards</span>
+        <h1 class="hero-title">Cetak QR <span class="accent">Anggota</span></h1>
+        <p class="hero-sub">Setiap QR terhubung ke satu anggota. QR dapat dicetak bersama-sama atau diunduh sebagai PNG.</p>
+    </div>
+    <div class="hero-actions no-print">
+        <a class="btn btn--secondary" href="{{ url_for('members') }}">Kembali ke Anggota</a>
+        <button class="btn btn--primary" type="button" onclick="window.print()">Cetak Semua QR</button>
+    </div>
+</section>
+
+<div class="qr-print-grid">
+    {% for member in members %}
+    <article class="qr-member-card">
+        <div class="qr-card-brand">MEDIA RU</div>
+        <img class="qr-member-image" src="{{ url_for('member_qr_image', qr_token=member.qr_token) }}" alt="QR absensi {{ member.name }}">
+        <h2>{{ member.name }}</h2>
+        <p>{{ member.role }}</p>
+        <span class="qr-card-note">Scan untuk absensi anggota</span>
+        <a class="btn btn--secondary btn--small no-print" href="{{ url_for('member_qr_image', qr_token=member.qr_token, download=1) }}">Unduh PNG</a>
+    </article>
+    {% else %}
+    <div class="card asset-empty"><div class="empty-state"><strong>Belum ada anggota</strong><span>Tambahkan anggota terlebih dahulu untuk membuat QR.</span></div></div>
+    {% endfor %}
+</div>
+{% endblock %}

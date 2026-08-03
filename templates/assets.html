@@ -1,0 +1,137 @@
+{% extends 'base.html' %}
+{% block title %}Assets{% endblock %}
+{% block breadcrumb %}Assets{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-text">
+        <span class="eyebrow">Cloud Media Library</span>
+        <h1 class="hero-title">Assets & <span class="accent">Dokumentasi</span></h1>
+        <p class="hero-sub">Unggah file ke Cloudinary, cari asset secara langsung, lalu buka atau unduh dari satu halaman.</p>
+    </div>
+</section>
+
+{% if error %}
+<section class="card section-gap alert-card alert-card--danger">
+    <strong>Upload gagal</strong>
+    <span>{{ error }}</span>
+</section>
+{% endif %}
+
+<section class="card section-gap">
+    <div class="card-head">
+        <div class="card-title-wrap">
+            <span class="eyebrow">Cloudinary</span>
+            <h2 class="card-title">Upload Asset</h2>
+        </div>
+        <span class="badge purple">Cloud Storage</span>
+    </div>
+    <form method="POST" enctype="multipart/form-data">
+        <div class="form-grid">
+            <div class="field">
+                <label class="field-label" for="file">Pilih file</label>
+                <input class="input file-input" id="file" type="file" name="file" required>
+                <span class="field-help">Ukuran maksimal mengikuti konfigurasi aplikasi: 16 MB.</span>
+            </div>
+            <div class="field">
+                <label class="field-label" for="description">Keterangan</label>
+                <input class="input" id="description" type="text" name="description" placeholder="Contoh: Dokumentasi acara 2026">
+            </div>
+        </div>
+        <div class="form-actions">
+            <span class="field-help">File baru disimpan di Cloudinary. MongoDB hanya menyimpan metadata dan URL asset.</span>
+            <span class="spacer"></span>
+            <button type="submit" class="btn btn--primary">Upload ke Cloudinary</button>
+        </div>
+    </form>
+</section>
+
+<section class="card">
+    <div class="card-head asset-library-head">
+        <div class="card-title-wrap"><span class="eyebrow">Library</span><h2 class="card-title">File Tersimpan</h2></div>
+        <span class="badge primary"><span id="assetVisibleCount">{{ files|length }}</span> / {{ files|length }} file</span>
+    </div>
+    <div class="asset-search-wrap">
+        <label class="field-label" for="assetSearch">Pencarian live</label>
+        <div class="asset-search-box">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+            <input class="input" id="assetSearch" type="search" placeholder="Cari nama file, keterangan, format, atau penyimpanan..." autocomplete="off">
+            <button class="asset-search-clear" id="assetSearchClear" type="button" aria-label="Hapus pencarian">×</button>
+        </div>
+    </div>
+    <div class="asset-grid" id="assetGrid">
+        {% for file in files %}
+        {% set is_cloudinary = file.storage == 'cloudinary' %}
+        {% set preview_url = file.url if is_cloudinary else url_for('static', filename='uploads/' + file.filename) %}
+        <article class="asset-card" data-asset-card data-search="{{ (file.filename ~ ' ' ~ (file.description or '') ~ ' ' ~ (file.cloudinary_format or '') ~ ' ' ~ (file.content_type or '') ~ ' ' ~ (file.storage or 'lokal'))|lower|e }}">
+            <a class="asset-preview" href="{{ preview_url }}" target="_blank" rel="noopener">
+                {% if file.content_type and file.content_type.startswith('image/') %}
+                    <img src="{{ preview_url }}" alt="{{ file.filename }}" loading="lazy">
+                {% elif file.cloudinary_resource_type == 'image' %}
+                    <img src="{{ preview_url }}" alt="{{ file.filename }}" loading="lazy">
+                {% else %}
+                    <div class="asset-file-placeholder">
+                        <span class="asset-file-type">{{ (file.cloudinary_format or file.filename.rsplit('.', 1)[-1] if '.' in file.filename else 'FILE')|upper }}</span>
+                        <span>File asset</span>
+                    </div>
+                {% endif %}
+            </a>
+            <div class="asset-body">
+                <strong title="{{ file.filename }}">{{ file.filename }}</strong>
+                <p>{{ file.description or 'Tanpa keterangan' }}</p>
+                <div class="asset-meta-row">
+                    <span class="badge {{ 'purple' if is_cloudinary else 'primary' }}">{{ 'Cloudinary' if is_cloudinary else 'Lokal' }}</span>
+                    {% if file.upload_date %}<span class="asset-date">{{ file.upload_date.strftime('%d/%m/%Y %H:%M') }}</span>{% endif %}
+                </div>
+                <div class="asset-actions">
+                    <a class="btn btn--ghost btn--small" href="{{ preview_url }}" target="_blank" rel="noopener">Lihat File</a>
+                    <a class="btn btn--secondary btn--small" href="{{ url_for('download_asset', asset_id=file._id) }}">Download</a>
+                </div>
+            </div>
+        </article>
+        {% else %}
+        <div class="empty-state asset-empty"><strong>Belum ada asset</strong><span>File yang diunggah akan tersimpan di Cloudinary dan tampil sebagai galeri di sini.</span></div>
+        {% endfor %}
+        <div class="empty-state asset-empty" id="assetNoResult" hidden><strong>Asset tidak ditemukan</strong><span>Coba gunakan kata kunci lain.</span></div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var input = document.getElementById('assetSearch');
+    var clearButton = document.getElementById('assetSearchClear');
+    var cards = Array.prototype.slice.call(document.querySelectorAll('[data-asset-card]'));
+    var count = document.getElementById('assetVisibleCount');
+    var noResult = document.getElementById('assetNoResult');
+    if (!input) return;
+
+    function normalize(value) {
+        return (value || '').toLocaleLowerCase('id-ID').trim();
+    }
+
+    function filterAssets() {
+        var query = normalize(input.value);
+        var visible = 0;
+        cards.forEach(function (card) {
+            var matches = !query || normalize(card.getAttribute('data-search')).indexOf(query) !== -1;
+            card.hidden = !matches;
+            if (matches) visible += 1;
+        });
+        if (count) count.textContent = visible;
+        if (noResult) noResult.hidden = visible !== 0 || cards.length === 0;
+        if (clearButton) clearButton.classList.toggle('is-visible', Boolean(query));
+    }
+
+    input.addEventListener('input', filterAssets);
+    if (clearButton) {
+        clearButton.addEventListener('click', function () {
+            input.value = '';
+            input.focus();
+            filterAssets();
+        });
+    }
+}());
+</script>
+{% endblock %}

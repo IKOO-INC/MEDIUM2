@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+{% block title %}Anggota{% endblock %}
+{% block breadcrumb %}Anggota{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-text">
+        <span class="eyebrow">Team Management</span>
+        <h1 class="hero-title">Kelola <span class="accent">Anggota Tim</span></h1>
+        <p class="hero-sub">Tambahkan anggota, tentukan role, dan kelola QR absensi yang dapat dicetak.</p>
+    </div>
+    <div class="hero-actions">
+        <a class="btn btn--primary" href="{{ url_for('member_qr_list') }}">Cetak QR Anggota</a>
+    </div>
+</section>
+
+<div class="grid">
+    <section class="col-5 card">
+        <div class="card-head">
+            <div class="card-title-wrap">
+                <span class="eyebrow">Form</span>
+                <h2 class="card-title">Tambah Anggota</h2>
+            </div>
+        </div>
+        <form method="POST">
+            <input type="hidden" name="action" value="add">
+            <div class="form-grid form-grid--single">
+                <div class="field">
+                    <label class="field-label" for="member_name">Nama anggota <span class="req">*</span></label>
+                    <input class="input" id="member_name" type="text" name="member_name" placeholder="Nama anggota baru" required>
+                </div>
+                <div class="field">
+                    <label class="field-label" for="member_role">Role <span class="req">*</span></label>
+                    <select class="select select--full" id="member_role" name="member_role" required>
+                        <option value="">-- Pilih Role --</option>
+                        <option value="Editor">Editor</option>
+                        <option value="Videografer">Videografer</option>
+                        <option value="Fotografer">Fotografer</option>
+                        <option value="Livestreamer">Livestreamer</option>
+                        <option value="Tim Creative">Tim Creative</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-actions">
+                <span class="field-help">QR unik dibuat otomatis saat anggota ditambahkan.</span>
+                <span class="spacer"></span>
+                <button class="btn btn--primary" type="submit">Tambah Anggota</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="col-7 card">
+        <div class="card-head">
+            <div class="card-title-wrap">
+                <span class="eyebrow">Team</span>
+                <h2 class="card-title">Daftar Anggota, Role & QR</h2>
+            </div>
+            <span class="badge primary">{{ members|length }} anggota</span>
+        </div>
+        <div class="member-list">
+            {% for member in members %}
+                <div class="member-item member-item--qr">
+                    <div class="member-avatar">{{ member.name[:2]|upper }}</div>
+                    <div class="member-meta">
+                        <strong>{{ member.name }}</strong>
+                        <span class="badge purple">{{ member.role }}</span>
+                    </div>
+                    <div class="member-actions">
+                        <a class="btn btn--secondary btn--small" href="{{ url_for('member_qr_image', qr_token=member.qr_token, download=1) }}">QR PNG</a>
+                        <form method="POST" class="member-action">
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="member_name" value="{{ member.name }}">
+                            <button type="submit" class="btn btn--danger btn--small" onclick="return confirm('Hapus {{ member.name }} dari tim?')">Hapus</button>
+                        </form>
+                    </div>
+                </div>
+            {% else %}
+                <div class="empty-state compact"><strong>Belum ada anggota</strong><span>Gunakan form untuk menambahkan anggota pertama.</span></div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}

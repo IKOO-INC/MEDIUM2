@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard{% endblock %}
+{% block breadcrumb %}Dashboard{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-text">
+        <span class="eyebrow" id="heroDate">Ringkasan hari ini</span>
+        <h1 class="hero-title">Dashboard <span class="accent">Tim Media</span></h1>
+        <p class="hero-sub">Pantau saldo kas dan project aktif tim dalam satu tampilan.</p>
+    </div>
+    <div class="hero-actions">
+        <a class="btn btn--ghost" href="{{ url_for('finance') }}">Lihat Kas</a>
+        <a class="btn btn--primary" href="{{ url_for('tasks') }}">Kelola Project</a>
+    </div>
+</section>
+
+<section class="kpi-grid kpi-grid--three" aria-label="Ringkasan kas">
+    <article class="kpi-card c-primary">
+        <div class="kpi-top">
+            <div class="kpi-identity">
+                <div class="kpi-icon primary"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/></svg></div>
+                <div class="kpi-label">Total Kas Tim</div>
+            </div>
+            <span class="kpi-pill info">Saldo</span>
+        </div>
+        <div class="kpi-value kpi-value--money"><sup>Rp</sup>{{ "{:,.0f}".format(balance) }}</div>
+        <div class="kpi-compare">Pemasukan dikurangi pengeluaran</div>
+    </article>
+
+    <article class="kpi-card c-success">
+        <div class="kpi-top">
+            <div class="kpi-identity">
+                <div class="kpi-icon success"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></div>
+                <div class="kpi-label">Total Pemasukan</div>
+            </div>
+            <span class="kpi-pill up">Masuk</span>
+        </div>
+        <div class="kpi-value kpi-value--money"><sup>Rp</sup>{{ "{:,.0f}".format(total_in) }}</div>
+        <div class="kpi-compare">Akumulasi seluruh transaksi masuk</div>
+    </article>
+
+    <article class="kpi-card c-danger">
+        <div class="kpi-top">
+            <div class="kpi-identity">
+                <div class="kpi-icon danger"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg></div>
+                <div class="kpi-label">Total Pengeluaran</div>
+            </div>
+            <span class="kpi-pill down">Keluar</span>
+        </div>
+        <div class="kpi-value kpi-value--money"><sup>Rp</sup>{{ "{:,.0f}".format(total_out) }}</div>
+        <div class="kpi-compare">Akumulasi seluruh transaksi keluar</div>
+    </article>
+</section>
+
+<section class="card">
+    <div class="card-head">
+        <div class="card-title-wrap">
+            <span class="eyebrow">Project</span>
+            <h2 class="card-title">Preview Task Aktif</h2>
+        </div>
+        <a class="card-action" href="{{ url_for('tasks') }}">Lihat semua <svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg></a>
+    </div>
+    <div class="task-preview-list">
+        {% for task in tasks %}
+        <div class="task-preview-item">
+            <div class="task-preview-icon"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+            <div class="task-preview-content">
+                <strong>{{ task.title }}</strong>
+                <span>{{ task.description or 'Tidak ada deskripsi.' }}</span>
+            </div>
+            <span class="badge warning dot">Active</span>
+        </div>
+        {% else %}
+        <div class="empty-state compact">
+            <strong>Tidak ada task aktif</strong>
+            <span>Task baru yang dibuat akan tampil di sini.</span>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

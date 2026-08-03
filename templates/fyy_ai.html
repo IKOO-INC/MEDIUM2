@@ -1,0 +1,168 @@
+{% extends 'base.html' %}
+{% block title %}FYY AI{% endblock %}
+{% block breadcrumb %}FYY AI{% endblock %}
+
+{% block content %}
+<section class="hero fyy-ai-hero">
+    <div class="hero-text">
+        <span class="eyebrow">AI Workspace</span>
+        <h1 class="hero-title">Chat dengan <span class="accent">FYY AI</span></h1>
+        <p class="hero-sub">Asisten cepat untuk caption, ide konten, rundown, administrasi, dan kebutuhan tim media.</p>
+    </div>
+    <div class="hero-actions">
+        <span class="badge purple">{{ model }}</span>
+    </div>
+</section>
+
+{% if not api_configured %}
+<div class="alert danger section-gap">GEMINI_API_KEY belum diatur. Tambahkan API key dari Google AI Studio pada environment server sebelum mengirim pesan.</div>
+{% endif %}
+
+<section class="card fyy-chat-card">
+    <div class="fyy-chat-head">
+        <div class="fyy-ai-identity">
+            <div class="fyy-ai-avatar">FY</div>
+            <div><strong>FYY AI</strong><span><i></i> Siap membantu · log tersimpan sementara {{ ttl_hours }} jam</span></div>
+        </div>
+        <button class="btn btn--ghost btn--small" id="clearChat" type="button">Hapus Chat</button>
+    </div>
+
+    <div class="fyy-chat-messages" id="chatMessages" aria-live="polite">
+        {% if not messages %}
+        <div class="fyy-welcome" id="chatWelcome">
+            <div class="fyy-ai-avatar fyy-ai-avatar--large">FY</div>
+            <h2>Ada yang bisa dibantu?</h2>
+            <p>Tanyakan ide konten, caption, materi, rundown acara, atau kebutuhan tim lainnya.</p>
+            <div class="fyy-suggestions">
+                <button type="button" data-prompt="Buatkan caption kegiatan santri yang singkat dan mengena.">Buat caption kegiatan</button>
+                <button type="button" data-prompt="Buatkan rundown acara sekolah yang rapi.">Susun rundown acara</button>
+                <button type="button" data-prompt="Berikan ide konten media sosial untuk pesantren.">Ide konten pesantren</button>
+            </div>
+        </div>
+        {% endif %}
+
+        {% for message in messages %}
+        <article class="fyy-message fyy-message--{{ 'user' if message.role == 'user' else 'assistant' }}">
+            <div class="fyy-message-avatar">{{ 'YOU' if message.role == 'user' else 'FY' }}</div>
+            <div class="fyy-message-bubble">
+                <div class="fyy-message-text">{{ message.content }}</div>
+                {% if message.created_at %}<time>{{ message.created_at.strftime('%H:%M') }}</time>{% endif %}
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+
+    <div class="fyy-chat-error" id="chatError" hidden></div>
+    <form class="fyy-chat-form" id="chatForm">
+        <textarea id="chatInput" name="message" rows="1" maxlength="6000" placeholder="Ketik pesan untuk FYY AI..." {% if not api_configured %}disabled{% endif %}></textarea>
+        <button class="fyy-send-button" id="sendButton" type="submit" aria-label="Kirim pesan" {% if not api_configured %}disabled{% endif %}>
+            <svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+        </button>
+    </form>
+    <div class="fyy-chat-note">Gemini Flash Free Tier memiliki batas kuota · Enter untuk mengirim · Shift+Enter untuk baris baru · Periksa kembali informasi penting.</div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var form = document.getElementById('chatForm');
+    var input = document.getElementById('chatInput');
+    var messages = document.getElementById('chatMessages');
+    var sendButton = document.getElementById('sendButton');
+    var clearButton = document.getElementById('clearChat');
+    var errorBox = document.getElementById('chatError');
+    if (!form || !input || !messages) return;
+
+    function scrollBottom() { messages.scrollTop = messages.scrollHeight; }
+    function setError(text) {
+        errorBox.textContent = text || '';
+        errorBox.hidden = !text;
+    }
+    function removeWelcome() {
+        var welcome = document.getElementById('chatWelcome');
+        if (welcome) welcome.remove();
+    }
+    function appendMessage(role, text, pending) {
+        removeWelcome();
+        var article = document.createElement('article');
+        article.className = 'fyy-message fyy-message--' + role + (pending ? ' is-pending' : '');
+        var avatar = document.createElement('div');
+        avatar.className = 'fyy-message-avatar';
+        avatar.textContent = role === 'user' ? 'YOU' : 'FY';
+        var bubble = document.createElement('div');
+        bubble.className = 'fyy-message-bubble';
+        var content = document.createElement('div');
+        content.className = 'fyy-message-text';
+        content.textContent = text;
+        bubble.appendChild(content);
+        article.appendChild(avatar);
+        article.appendChild(bubble);
+        messages.appendChild(article);
+        scrollBottom();
+        return article;
+    }
+    function resizeInput() {
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+    }
+
+    form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var message = input.value.trim();
+        if (!message || sendButton.disabled) return;
+        setError('');
+        appendMessage('user', message, false);
+        input.value = '';
+        resizeInput();
+        sendButton.disabled = true;
+        input.disabled = true;
+        var pending = appendMessage('assistant', 'FYY AI sedang mengetik…', true);
+
+        fetch('{{ url_for("fyy_ai_chat") }}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({message: message})
+        }).then(function (response) {
+            return response.json().then(function (data) { return {ok: response.ok, data: data}; });
+        }).then(function (result) {
+            pending.remove();
+            if (!result.ok || !result.data.ok) throw new Error(result.data.error || 'Gagal memperoleh jawaban AI.');
+            appendMessage('assistant', result.data.reply, false);
+        }).catch(function (error) {
+            pending.remove();
+            setError(error.message || 'Terjadi kesalahan saat menghubungi FYY AI.');
+        }).finally(function () {
+            sendButton.disabled = false;
+            input.disabled = false;
+            input.focus();
+        });
+    });
+
+    input.addEventListener('input', resizeInput);
+    input.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            form.requestSubmit();
+        }
+    });
+    document.querySelectorAll('[data-prompt]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            input.value = button.getAttribute('data-prompt');
+            resizeInput();
+            input.focus();
+        });
+    });
+    if (clearButton) {
+        clearButton.addEventListener('click', function () {
+            if (!confirm('Hapus seluruh chat sementara pada browser ini?')) return;
+            fetch('{{ url_for("clear_fyy_ai_chat") }}', {method: 'POST'})
+                .then(function (response) { if (!response.ok) throw new Error(); return response.json(); })
+                .then(function () { window.location.reload(); })
+                .catch(function () { setError('Chat belum berhasil dihapus.'); });
+        });
+    }
+    scrollBottom();
+}());
+</script>
+{% endblock %}

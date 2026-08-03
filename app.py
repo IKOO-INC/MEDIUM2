@@ -1,0 +1,921 @@
+from flask import (
+    Flask, abort, jsonify, redirect, render_template, request,
+    send_file, send_from_directory, session, url_for
+)
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
+from bson.objectid import ObjectId
+from werkzeug.utils import secure_filename
+from io import BytesIO
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse, unquote
+from urllib.request import Request as UrlRequest, urlopen
+import os
+import uuid
+from datetime import datetime, timedelta
+
+import cloudinary
+import cloudinary.uploader
+from cloudinary.exceptions import Error as CloudinaryError
+from google import genai
+
+import qrcode
+from qrcode.constants import ERROR_CORRECT_M
+
+app = Flask(__name__)
+app.secret_key = os.getenv('SECRET_KEY', 'fyy-medium-dev-secret-change-me')
+
+# Konfigurasi Upload
+app.config['UPLOAD_FOLDER'] = 'static/uploads'
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Maksimal ukuran file 16MB
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+# Nama hari bahasa Indonesia
+indo_days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+
+# ---------------------------------------------------------
+# KONEKSI MONGODB ATLAS
+# ---------------------------------------------------------
+MONGO_URI = "mongodb+srv://muhammaddarjuni76_db_user:dI42gI11RtTIw7YM@fyy.uddizvu.mongodb.net/?appName=fyy"
+client = MongoClient(MONGO_URI)
+db = client['medium']
+
+
+# ==========================================
+# HELPER ANGGOTA & ABSENSI QR
+# ==========================================
+def ensure_member_qr_tokens():
+    """Pastikan seluruh anggota berbentuk object dan memiliki qr_token unik."""
+    team_data = db.settings.find_one({"_id": "team_settings"})
+    raw_members = team_data.get('members_array', []) if team_data else []
+
+    normalized_members = []
+    used_tokens = set()
+    changed = False
+
+    for member in raw_members:
+        if isinstance(member, dict):
+            normalized = dict(member)
+        else:
+            normalized = {
+                "name": member,
+                "role": "Belum di-set"
+            }
+            changed = True
+
+        normalized["name"] = str(normalized.get("name", "")).strip()
+        normalized["role"] = normalized.get("role") or "Belum di-set"
+
+        qr_token = str(normalized.get("qr_token", "")).strip()
+        if not qr_token or qr_token in used_tokens:
+            qr_token = uuid.uuid4().hex
+            normalized["qr_token"] = qr_token
+            changed = True
+
+        used_tokens.add(qr_token)
+        normalized_members.append(normalized)
+
+        if normalized != member:
+            changed = True
+
+    if changed:
+        db.settings.update_one(
+            {"_id": "team_settings"},
+            {"$set": {"members_array": normalized_members}},
+            upsert=True
+        )
+
+    return normalized_members
+
+
+def find_member_by_qr_token(qr_token):
+    for member in ensure_member_qr_tokens():
+        if member.get('qr_token') == qr_token:
+            return member
+    return None
+
+
+def create_attendance_record(name, status, notes, method, qr_token=None):
+    allowed_statuses = {"Hadir", "Izin", "Sakit"}
+    clean_name = (name or "").strip()
+    clean_status = (status or "").strip()
+    clean_notes = (notes or "").strip()
+
+    if not clean_name or clean_status not in allowed_statuses:
+        return False
+
+    record = {
+        "name": clean_name,
+        "status": clean_status,
+        "notes": clean_notes,
+        "method": method,
+        "date_submitted": datetime.now()
+    }
+    if qr_token:
+        record["qr_token"] = qr_token
+
+    db.attendance.insert_one(record)
+    return True
+
+
+def get_attendance_context():
+    members_list = ensure_member_qr_tokens()
+    records = list(db.attendance.find().sort("date_submitted", -1))
+
+    stats = {}
+    for member in members_list:
+        member_name = member.get('name')
+        if not member_name:
+            continue
+        stats[member_name] = {
+            'Hadir': 0,
+            'Izin': 0,
+            'Sakit': 0,
+            'Wajib_Hadir': 0,
+            'Role': member.get('role') or 'Belum di-set'
+        }
+
+    for record in records:
+        submitted_at = record.get('date_submitted')
+        if not isinstance(submitted_at, datetime):
+            submitted_at = datetime.now()
+            record['date_submitted'] = submitted_at
+
+        day_index = submitted_at.weekday()
+        record['hari_indo'] = indo_days[day_index]
+        record['is_wajib'] = day_index in [0, 5]
+        record['method'] = record.get('method') or 'manual'
+
+        name = record.get('name')
+        if record['is_wajib'] and name in stats:
+            stats[name]['Wajib_Hadir'] += 1
+            status = record.get('status')
+            if status in stats[name]:
+                stats[name][status] += 1
+
+    return members_list, records, stats
+
+
+# ==========================================
+# 1. DASHBOARD & TOTAL TEAM BALANCE
+# ==========================================
+@app.route('/')
+def index():
+    incomes = list(db.finance.find({"type": "in"}))
+    expenses = list(db.finance.find({"type": "out"}))
+
+    total_in = sum(item['amount'] for item in incomes)
+    total_out = sum(item['amount'] for item in expenses)
+    balance = total_in - total_out
+
+    active_tasks = list(db.tasks.find({"status": "active"}).limit(5))
+
+    return render_template(
+        'index.html',
+        balance=balance,
+        total_in=total_in,
+        total_out=total_out,
+        tasks=active_tasks
+    )
+
+
+# ==========================================
+# 2. ABSENSI: REKAP, MANUAL, DAN SCAN QR
+# ==========================================
+@app.route('/attendance', methods=['GET', 'POST'])
+def attendance():
+    # Dukungan lama: POST ke /attendance tetap dianggap absen manual.
+    if request.method == 'POST':
+        create_attendance_record(
+            request.form.get('name'),
+            request.form.get('status'),
+            request.form.get('notes'),
+            method='manual'
+        )
+        return redirect(url_for('attendance'))
+
+    members_list, records, stats = get_attendance_context()
+    return render_template(
+        'attendance.html',
+        records=records,
+        members=members_list,
+        stats=stats,
+        saved=request.args.get('saved')
+    )
+
+
+@app.route('/attendance/manual', methods=['GET', 'POST'])
+def attendance_manual():
+    members_list = ensure_member_qr_tokens()
+    error = ""
+
+    if request.method == 'POST':
+        member_name = (request.form.get('name') or '').strip()
+        valid_names = {member.get('name') for member in members_list}
+
+        if member_name not in valid_names:
+            error = "Anggota tidak ditemukan. Silakan pilih anggota dari daftar."
+        elif create_attendance_record(
+            member_name,
+            request.form.get('status'),
+            request.form.get('notes'),
+            method='manual'
+        ):
+            return redirect(url_for('attendance', saved='manual'))
+        else:
+            error = "Data absensi belum lengkap atau status tidak valid."
+
+    return render_template('attendance_manual.html', members=members_list, error=error)
+
+
+@app.route('/attendance/scan')
+def attendance_scan():
+    return render_template('attendance_scan.html')
+
+
+@app.route('/attendance/scan/<qr_token>', methods=['GET', 'POST'])
+def attendance_scan_member(qr_token):
+    member = find_member_by_qr_token(qr_token)
+    if not member:
+        abort(404)
+
+    error = ""
+    if request.method == 'POST':
+        if create_attendance_record(
+            member.get('name'),
+            request.form.get('status'),
+            request.form.get('notes'),
+            method='scan',
+            qr_token=qr_token
+        ):
+            return redirect(url_for('attendance', saved='scan'))
+        error = "Status absensi tidak valid. Silakan periksa kembali."
+
+    return render_template('attendance_scan_member.html', member=member, error=error)
+
+
+# ==========================================
+# FITUR: KELOLA ANGGOTA & QR
+# ==========================================
+@app.route('/members', methods=['GET', 'POST'])
+def members():
+    if request.method == 'POST':
+        action = request.form.get('action')
+        member_name = (request.form.get('member_name') or '').strip()
+        member_role = (request.form.get('member_role') or '').strip()
+
+        if action == 'add' and member_name and member_role:
+            db.settings.update_one(
+                {"_id": "team_settings"},
+                {"$pull": {"members_array": {"name": member_name}}}
+            )
+            db.settings.update_one(
+                {"_id": "team_settings"},
+                {"$pull": {"members_array": member_name}}
+            )
+            db.settings.update_one(
+                {"_id": "team_settings"},
+                {"$push": {"members_array": {
+                    "name": member_name,
+                    "role": member_role,
+                    "qr_token": uuid.uuid4().hex
+                }}},
+                upsert=True
+            )
+        elif action == 'delete' and member_name:
+            db.settings.update_one(
+                {"_id": "team_settings"},
+                {"$pull": {"members_array": {"name": member_name}}}
+            )
+            db.settings.update_one(
+                {"_id": "team_settings"},
+                {"$pull": {"members_array": member_name}}
+            )
+        return redirect(url_for('members'))
+
+    members_list = ensure_member_qr_tokens()
+    return render_template('members.html', members=members_list)
+
+
+@app.route('/members/qr')
+def member_qr_list():
+    members_list = ensure_member_qr_tokens()
+    return render_template('member_qr.html', members=members_list)
+
+
+@app.route('/members/qr/<qr_token>.png')
+def member_qr_image(qr_token):
+    member = find_member_by_qr_token(qr_token)
+    if not member:
+        abort(404)
+
+    scan_url = url_for('attendance_scan_member', qr_token=qr_token, _external=True)
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=ERROR_CORRECT_M,
+        box_size=10,
+        border=4
+    )
+    qr.add_data(scan_url)
+    qr.make(fit=True)
+    image = qr.make_image(fill_color="black", back_color="white")
+
+    image_buffer = BytesIO()
+    image.save(image_buffer, format='PNG')
+    image_buffer.seek(0)
+
+    safe_name = secure_filename(member.get('name') or 'anggota') or 'anggota'
+    return send_file(
+        image_buffer,
+        mimetype='image/png',
+        as_attachment=request.args.get('download') == '1',
+        download_name=f'QR-{safe_name}.png'
+    )
+
+
+# ==========================================
+# 3. KAS MASUK KELUAR (TRANSPARAN)
+# ==========================================
+@app.route('/finance', methods=['GET', 'POST'])
+def finance():
+    if request.method == 'POST':
+        db.finance.insert_one({
+            "type": request.form.get('type'),
+            "amount": float(request.form.get('amount')),
+            "description": request.form.get('description'),
+            "user": request.form.get('user'),
+            "date": datetime.now()
+        })
+        return redirect(url_for('finance'))
+
+    transactions = list(db.finance.find().sort("date", -1))
+    return render_template('finance.html', transactions=transactions)
+
+
+# ==========================================
+# 4. DAFTAR PROJECT, KONTRIBUTOR & PASSED TASK
+# ==========================================
+def get_valid_contributor_names():
+    return {
+        member.get('name')
+        for member in ensure_member_qr_tokens()
+        if member.get('name')
+    }
+
+
+def normalize_contributors(raw_names):
+    valid_names = get_valid_contributor_names()
+    contributors = []
+    for raw_name in raw_names:
+        clean_name = (raw_name or '').strip()
+        if clean_name in valid_names and clean_name not in contributors:
+            contributors.append(clean_name)
+    return contributors
+
+
+@app.route('/tasks', methods=['GET', 'POST'])
+def tasks():
+    members_list = ensure_member_qr_tokens()
+    error = ''
+
+    if request.method == 'POST':
+        title = (request.form.get('title') or '').strip()
+        description = (request.form.get('description') or '').strip()
+        contributors = normalize_contributors(request.form.getlist('contributors'))
+
+        if not title or not description:
+            error = 'Judul dan deskripsi task wajib diisi.'
+        else:
+            db.tasks.insert_one({
+                "title": title,
+                "description": description,
+                "contributors": contributors,
+                "status": "active",
+                "date_created": datetime.now()
+            })
+            return redirect(url_for('tasks'))
+
+    active_tasks = list(db.tasks.find({"status": "active"}).sort("date_created", -1))
+    passed_tasks = list(db.tasks.find({"status": "passed"}).sort("date_created", -1))
+    return render_template(
+        'tasks.html',
+        active_tasks=active_tasks,
+        passed_tasks=passed_tasks,
+        members=members_list,
+        error=error
+    )
+
+
+@app.route('/task/contributors/<task_id>', methods=['POST'])
+def update_task_contributors(task_id):
+    try:
+        object_id = ObjectId(task_id)
+    except Exception:
+        abort(404)
+
+    contributors = normalize_contributors(request.form.getlist('contributors'))
+    result = db.tasks.update_one(
+        {"_id": object_id},
+        {"$set": {"contributors": contributors}}
+    )
+    if result.matched_count == 0:
+        abort(404)
+    return redirect(url_for('tasks'))
+
+
+@app.route('/task/complete/<task_id>')
+def complete_task(task_id):
+    try:
+        object_id = ObjectId(task_id)
+    except Exception:
+        abort(404)
+
+    result = db.tasks.update_one(
+        {"_id": object_id},
+        {"$set": {"status": "passed", "date_completed": datetime.now()}}
+    )
+    if result.matched_count == 0:
+        abort(404)
+    return redirect(url_for('tasks'))
+
+
+# ==========================================
+# 5. PAPAN PENGUMUMAN (ROUTE TERPISAH)
+# ==========================================
+@app.route('/announcements', methods=['GET', 'POST'])
+def announcements():
+    members_list = ensure_member_qr_tokens()
+    error = ''
+
+    if request.method == 'POST':
+        title = (request.form.get('title') or '').strip()
+        content = (request.form.get('content') or '').strip()
+        author = (request.form.get('author') or 'Admin').strip() or 'Admin'
+        priority = (request.form.get('priority') or 'normal').strip()
+        if priority not in {'normal', 'important', 'urgent'}:
+            priority = 'normal'
+
+        if not title or not content:
+            error = 'Judul dan isi pengumuman wajib diisi.'
+        else:
+            db.announcements.insert_one({
+                'title': title,
+                'content': content,
+                'author': author,
+                'priority': priority,
+                'created_at': datetime.now()
+            })
+            return redirect(url_for('announcements'))
+
+    items = list(db.announcements.find().sort('created_at', -1).limit(100))
+    return render_template(
+        'announcements.html',
+        announcements=items,
+        members=members_list,
+        error=error
+    )
+
+
+@app.route('/announcements/delete/<announcement_id>', methods=['POST'])
+def delete_announcement(announcement_id):
+    try:
+        object_id = ObjectId(announcement_id)
+    except Exception:
+        abort(404)
+
+    result = db.announcements.delete_one({'_id': object_id})
+    if result.deleted_count == 0:
+        abort(404)
+    return redirect(url_for('announcements'))
+
+
+# ==========================================
+# 6. FYY AI — CHATBOT GEMINI FLASH
+# ==========================================
+def get_fyy_ai_session_id():
+    session_id = session.get('fyy_ai_session_id')
+    if not session_id:
+        session_id = uuid.uuid4().hex
+        session['fyy_ai_session_id'] = session_id
+    return session_id
+
+
+def get_ai_log_ttl_hours():
+    try:
+        ttl_hours = int(os.getenv('FYY_AI_LOG_TTL_HOURS', '24'))
+    except ValueError:
+        ttl_hours = 24
+    return max(1, min(ttl_hours, 168))
+
+
+def ensure_ai_log_ttl_index():
+    try:
+        db.ai_chat_logs.create_index(
+            [('expires_at', 1)],
+            expireAfterSeconds=0,
+            name='expires_at_ttl'
+        )
+    except PyMongoError:
+        # Chat tetap dapat digunakan walaupun index TTL belum berhasil dibuat.
+        pass
+
+
+def store_ai_message(session_id, role, content):
+    now = datetime.utcnow()
+    db.ai_chat_logs.insert_one({
+        'session_id': session_id,
+        'role': role,
+        'content': content,
+        'created_at': now,
+        'expires_at': now + timedelta(hours=get_ai_log_ttl_hours())
+    })
+
+
+def get_ai_messages(session_id, limit=40):
+    messages = list(
+        db.ai_chat_logs.find({'session_id': session_id})
+        .sort('created_at', -1)
+        .limit(limit)
+    )
+    messages.reverse()
+    return messages
+
+
+def get_gemini_api_key():
+    """Ambil API key Gemini dari environment yang didukung SDK Google."""
+    return (
+        'xxx'
+        or 'xxx'
+    )
+
+
+def get_gemini_model():
+    return 'gemini-3-flash-preview'
+
+
+def build_gemini_history(messages):
+    """Ubah log MongoDB menjadi format percakapan Gemini.
+
+    Gemini menggunakan role `model` untuk jawaban asisten. Pesan berurutan
+    dengan role sama digabung agar request tetap valid walaupun request AI
+    sebelumnya gagal setelah pesan pengguna tersimpan.
+    """
+    contents = []
+
+    for item in messages:
+        stored_role = item.get('role', 'user')
+        content = str(item.get('content', '')).strip()
+        if stored_role not in {'user', 'assistant'} or not content:
+            continue
+
+        gemini_role = 'model' if stored_role == 'assistant' else 'user'
+        if contents and contents[-1]['role'] == gemini_role:
+            contents[-1]['parts'][0]['text'] += '\n\n' + content
+        else:
+            contents.append({
+                'role': gemini_role,
+                'parts': [{'text': content}]
+            })
+
+    return contents
+
+
+def get_gemini_error_message(exc):
+    """Buat pesan error yang mudah dipahami tanpa membocorkan detail API key."""
+    error_text = str(exc).lower()
+
+    if '429' in error_text or 'resource_exhausted' in error_text or 'quota' in error_text:
+        return (
+            'Kuota gratis Gemini sedang habis atau terlalu banyak permintaan. '
+            'Tunggu beberapa saat lalu coba lagi.'
+        ), 429
+
+    if '401' in error_text or '403' in error_text or 'api key' in error_text:
+        return (
+            'GEMINI_API_KEY tidak valid atau belum memiliki akses ke Gemini API.'
+        ), 503
+
+    if (
+        '404' in error_text
+        or 'model not found' in error_text
+        or ('models/' in error_text and 'not found' in error_text)
+        or 'model is not supported' in error_text
+    ):
+        return (
+            'Model Gemini tidak ditemukan. Periksa nilai GEMINI_MODEL pada environment.'
+        ), 502
+
+    return (
+        'Gagal menghubungi Gemini. Periksa koneksi server dan konfigurasi API key.'
+    ), 502
+
+
+@app.route('/fyy-ai')
+def fyy_ai():
+    ensure_ai_log_ttl_index()
+    session_id = get_fyy_ai_session_id()
+    messages = get_ai_messages(session_id)
+    return render_template(
+        'fyy_ai.html',
+        messages=messages,
+        model=get_gemini_model(),
+        api_configured=bool(get_gemini_api_key()),
+        ttl_hours=get_ai_log_ttl_hours()
+    )
+
+
+@app.route('/fyy-ai/chat', methods=['POST'])
+def fyy_ai_chat():
+    ensure_ai_log_ttl_index()
+    payload = request.get_json(silent=True) or request.form
+    user_message = (payload.get('message') or '').strip()
+
+    if not user_message:
+        return jsonify({'ok': False, 'error': 'Pesan tidak boleh kosong.'}), 400
+    if len(user_message) > 6000:
+        return jsonify({'ok': False, 'error': 'Pesan terlalu panjang. Maksimal 6.000 karakter.'}), 400
+
+    api_key = get_gemini_api_key()
+    if not api_key:
+        return jsonify({
+            'ok': False,
+            'error': 'GEMINI_API_KEY belum diatur pada environment server.'
+        }), 503
+
+    session_id = get_fyy_ai_session_id()
+    store_ai_message(session_id, 'user', user_message)
+    history = get_ai_messages(session_id, limit=18)
+    model = get_gemini_model()
+
+    try:
+        client_ai = genai.Client(api_key=api_key)
+        response = client_ai.models.generate_content(
+            model=model,
+            contents=build_gemini_history(history),
+            config={
+                'system_instruction': (
+                    'Anda adalah FYY AI, asisten untuk tim media Roudlotul Ulum. '
+                    'Jawab dalam bahasa Indonesia yang jelas, ramah, dan langsung membantu. '
+                    'Bantu penulisan konten, ide desain, rundown, caption, administrasi tim, '
+                    'serta pertanyaan umum. Pertahankan konteks percakapan yang diberikan. '
+                    'Jangan mengaku telah melakukan tindakan di sistem yang sebenarnya belum dilakukan.'
+                ),
+                'temperature': 0.7,
+                'max_output_tokens': 1200
+            }
+        )
+        reply = (response.text or '').strip()
+        if not reply:
+            reply = 'Maaf, FYY AI belum menghasilkan jawaban. Silakan kirim ulang pertanyaan.'
+    except Exception as exc:
+        app.logger.exception('FYY AI Gemini request failed')
+        error_message, status_code = get_gemini_error_message(exc)
+        return jsonify({'ok': False, 'error': error_message}), status_code
+
+    store_ai_message(session_id, 'assistant', reply)
+    return jsonify({'ok': True, 'reply': reply, 'model': model})
+
+
+@app.route('/fyy-ai/clear', methods=['POST'])
+def clear_fyy_ai_chat():
+    session_id = get_fyy_ai_session_id()
+    db.ai_chat_logs.delete_many({'session_id': session_id})
+    return jsonify({'ok': True})
+
+
+# ==========================================
+# 7. UPLOAD ASSETS / DOKUMENTASI — CLOUDINARY
+# ==========================================
+def get_cloudinary_config():
+    """Ambil konfigurasi Cloudinary dari environment.
+
+    Mendukung dua cara:
+    1. CLOUDINARY_CLOUD_NAME + CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET
+    2. CLOUDINARY_URL=cloudinary://API_KEY:API_SECRET@CLOUD_NAME
+    """
+    cloud_name = 'dakwyt1c4'
+    api_key = '263124236154547'
+    api_secret = 'j4SZavaBMFs7YhEKZDWlyGoBF4E'
+
+    folder = 'medium'
+    return cloud_name, api_key, api_secret, folder
+
+
+def configure_cloudinary():
+    """Konfigurasi SDK Cloudinary untuk aplikasi Flask."""
+    cloud_name, api_key, api_secret, folder = get_cloudinary_config()
+    if not (cloud_name and api_key and api_secret):
+        raise RuntimeError(
+            'Cloudinary belum dikonfigurasi. Isi CLOUDINARY_CLOUD_NAME, '
+            'CLOUDINARY_API_KEY, dan CLOUDINARY_API_SECRET.'
+        )
+
+    cloudinary.config(
+            cloud_name='dakwyt1c4',
+            api_key='263124236154547',
+            api_secret='j4SZavaBMFs7YhEKZDWlyGoBF4E',
+            secure=True
+    )
+    return folder
+
+
+def cloudinary_is_configured():
+    cloud_name, api_key, api_secret, _ = get_cloudinary_config()
+    return bool(cloud_name and api_key and api_secret)
+
+
+def upload_to_cloudinary(file_storage):
+    """Upload file dari Flask/Werkzeug menggunakan Cloudinary Python SDK."""
+    folder = configure_cloudinary()
+
+    original_filename = file_storage.filename or 'asset'
+    content_type = file_storage.mimetype or 'application/octet-stream'
+
+    try:
+        # SDK menangani signature/authentication di sisi server.
+        result = cloudinary.uploader.upload(
+            file_storage.stream,
+            resource_type='auto',
+            folder=folder,
+            use_filename=True,
+            unique_filename=True,
+            overwrite=False
+        )
+    except CloudinaryError as exc:
+        raise RuntimeError(f'Upload ke Cloudinary gagal: {exc}') from exc
+    except (OSError, ValueError, TypeError) as exc:
+        raise RuntimeError(f'Upload ke Cloudinary gagal: {exc}') from exc
+
+    return {
+        'filename': original_filename,
+        'description': '',
+        'storage': 'cloudinary',
+        'cloudinary_public_id': result.get('public_id'),
+        'cloudinary_resource_type': result.get('resource_type'),
+        'cloudinary_format': result.get('format'),
+        'cloudinary_version': result.get('version'),
+        'cloudinary_type': result.get('type'),
+        'url': result.get('secure_url'),
+        'bytes': result.get('bytes'),
+        'content_type': content_type
+    }
+
+def get_cloudinary_asset_url(asset):
+    """Ambil delivery URL tersimpan dan pastikan berasal dari Cloudinary."""
+    asset_url = (asset.get('url') or '').strip()
+    if not asset_url:
+        return None
+
+    parsed = urlparse(asset_url)
+    hostname = (parsed.hostname or '').lower()
+    if parsed.scheme != 'https' or not (
+        hostname == 'res.cloudinary.com' or hostname.endswith('.cloudinary.com')
+    ):
+        return None
+    return asset_url
+
+
+def proxy_cloudinary_download(asset):
+    """Unduh file dari Cloudinary melalui server lalu kirim sebagai attachment.
+
+    Cara ini tidak bergantung pada transformasi URL `fl_attachment`, sehingga
+    kompatibel untuk image, video, dan raw file yang disimpan dengan resource_type auto.
+    """
+    asset_url = get_cloudinary_asset_url(asset)
+    if not asset_url:
+        abort(404)
+
+    request_headers = {
+        'User-Agent': 'MediaRU-Flask/1.0',
+        'Accept': '*/*'
+    }
+    try:
+        cloud_request = UrlRequest(asset_url, headers=request_headers)
+        with urlopen(cloud_request, timeout=30) as cloud_response:
+            max_download_size = 32 * 1024 * 1024
+            file_bytes = cloud_response.read(max_download_size + 1)
+            if len(file_bytes) > max_download_size:
+                abort(413)
+            response_content_type = cloud_response.headers.get_content_type()
+    except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        app.logger.warning('Cloudinary download failed: %s', exc)
+        abort(502)
+
+    filename = secure_filename(asset.get('filename') or 'asset') or 'asset'
+    content_type = asset.get('content_type') or response_content_type or 'application/octet-stream'
+    return send_file(
+        BytesIO(file_bytes),
+        mimetype=content_type,
+        as_attachment=True,
+        download_name=filename,
+        max_age=0
+    )
+
+
+@app.route('/assets', methods=['GET', 'POST'])
+def assets():
+    error = request.args.get('error', '')
+
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            return redirect(url_for('assets', error='File tidak ditemukan.'))
+
+        file = request.files['file']
+        if not file.filename:
+            return redirect(url_for('assets', error='Silakan pilih file terlebih dahulu.'))
+
+        try:
+            asset = upload_to_cloudinary(file)
+            asset['description'] = (request.form.get('description') or '').strip()
+            asset['upload_date'] = datetime.now()
+            db.assets.insert_one(asset)
+        except RuntimeError as exc:
+            return redirect(url_for('assets', error=str(exc)))
+
+        return redirect(url_for('assets'))
+
+    files = list(db.assets.find().sort("upload_date", -1))
+    return render_template('assets.html', files=files, error=error)
+
+
+@app.route('/assets/download/<asset_id>')
+def download_asset(asset_id):
+    """Download Cloudinary asset atau asset lokal lama."""
+    try:
+        object_id = ObjectId(asset_id)
+    except Exception:
+        abort(404)
+
+    asset = db.assets.find_one({'_id': object_id})
+    if not asset:
+        abort(404)
+
+    if asset.get('storage') == 'cloudinary':
+        return proxy_cloudinary_download(asset)
+
+    filename = asset.get('filename')
+    if not filename:
+        abort(404)
+
+    local_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    if not os.path.isfile(local_path):
+        abort(404)
+
+    return send_from_directory(
+        app.config['UPLOAD_FOLDER'],
+        filename,
+        as_attachment=True,
+        download_name=filename
+    )
+
+
+# ==========================================
+# 8. DATABASE CONSOLE (MIGRASI / BROADCAST KEY)
+# ==========================================
+@app.route('/console', methods=['GET', 'POST'])
+def db_console():
+    message = ""
+    status_type = "success"
+
+    if request.method == 'POST':
+        target = request.form.get('target')
+        new_key = request.form.get('new_key')
+        default_val = request.form.get('default_val')
+
+        if default_val and default_val.isdigit():
+            default_val = int(default_val)
+
+        if not new_key:
+            message = "Nama Key tidak boleh kosong!"
+            status_type = "danger"
+        else:
+            if target == 'members':
+                team_data = db.settings.find_one({"_id": "team_settings"})
+                if team_data and 'members_array' in team_data:
+                    updated_members = []
+                    for member in team_data['members_array']:
+                        if isinstance(member, dict):
+                            member[new_key] = default_val
+                            updated_members.append(member)
+                        else:
+                            updated_members.append({
+                                "name": member,
+                                "role": "Belum di-set",
+                                new_key: default_val
+                            })
+
+                    db.settings.update_one(
+                        {"_id": "team_settings"},
+                        {"$set": {"members_array": updated_members}}
+                    )
+                    message = f"Berhasil broadcast key '{new_key}' ke semua data Anggota!"
+
+            elif target in ['attendance', 'finance', 'tasks', 'assets', 'announcements', 'ai_chat_logs']:
+                db[target].update_many({}, {"$set": {new_key: default_val}})
+                message = f"Berhasil broadcast key '{new_key}' ke semua data di koleksi '{target}'!"
+
+    return render_template('console.html', message=message, status_type=status_type)
+
+
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=5000, debug=True)

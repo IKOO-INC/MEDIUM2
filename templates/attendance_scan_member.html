@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block title %}Konfirmasi Scan{% endblock %}
+{% block breadcrumb %}Konfirmasi Scan{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-text">
+        <span class="eyebrow">QR Detected</span>
+        <h1 class="hero-title">Konfirmasi <span class="accent">Absensi</span></h1>
+        <p class="hero-sub">QR berhasil menentukan anggota. Lengkapi status dan keterangannya sebelum disimpan.</p>
+    </div>
+    <div class="hero-actions">
+        <a class="btn btn--secondary" href="{{ url_for('attendance_scan') }}">Scan Ulang</a>
+    </div>
+</section>
+
+<div class="grid scan-confirm-grid">
+    <section class="col-4 card member-confirm-card">
+        <span class="member-confirm-badge">QR TERBACA</span>
+        <div class="member-confirm-avatar">{{ member.name[:2]|upper }}</div>
+        <h2>{{ member.name }}</h2>
+        <span class="badge purple">{{ member.role }}</span>
+        <p>Nama anggota dikunci berdasarkan QR dan tidak dapat diganti dari form ini.</p>
+    </section>
+
+    <section class="col-8 card">
+        <div class="card-head">
+            <div class="card-title-wrap">
+                <span class="eyebrow">Scan Attendance</span>
+                <h2 class="card-title">Keterangan Kehadiran</h2>
+            </div>
+            <span class="badge success">HASIL SCAN</span>
+        </div>
+
+        {% if error %}<div class="alert danger">{{ error }}</div>{% endif %}
+
+        <form method="POST" action="{{ url_for('attendance_scan_member', qr_token=member.qr_token) }}">
+            <div class="form-grid form-grid--single">
+                <div class="field">
+                    <label class="field-label" for="status">Status <span class="req">*</span></label>
+                    <select class="select select--full" id="status" name="status" required>
+                        <option value="Hadir">Hadir</option>
+                        <option value="Izin">Izin</option>
+                        <option value="Sakit">Sakit</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label class="field-label" for="notes">Keterangan</label>
+                    <textarea class="input textarea" id="notes" name="notes" rows="5" autofocus placeholder="Contoh: Hadir tepat waktu, terlambat 10 menit, izin kegiatan, dan lainnya"></textarea>
+                </div>
+            </div>
+            <div class="form-actions">
+                <span class="field-help">Metode akan tersimpan sebagai Scan QR.</span>
+                <span class="spacer"></span>
+                <button type="submit" class="btn btn--primary">Simpan Absensi {{ member.name }}</button>
+            </div>
+        </form>
+    </section>
+</div>
+{% endblock %}

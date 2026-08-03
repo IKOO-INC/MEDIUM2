@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% block title %}Kas Tim{% endblock %}
+{% block breadcrumb %}Kas Tim{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-text">
+        <span class="eyebrow">Finance</span>
+        <h1 class="hero-title">Manajemen <span class="accent">Kas Tim</span></h1>
+        <p class="hero-sub">Catat pemasukan dan pengeluaran agar keuangan tim tetap transparan.</p>
+    </div>
+</section>
+
+<section class="card section-gap">
+    <div class="card-head">
+        <div class="card-title-wrap">
+            <span class="eyebrow">Transaksi</span>
+            <h2 class="card-title">Tambah Catatan Kas</h2>
+        </div>
+    </div>
+    <form method="POST">
+        <div class="form-grid finance-form-grid">
+            <div class="field">
+                <label class="field-label" for="type">Tipe transaksi</label>
+                <select class="select select--full" id="type" name="type" required>
+                    <option value="in">Masuk (Income)</option>
+                    <option value="out">Keluar (Expense)</option>
+                </select>
+            </div>
+            <div class="field">
+                <label class="field-label" for="amount">Jumlah</label>
+                <input class="input" id="amount" type="number" name="amount" placeholder="Jumlah (Rp)" min="0" step="any" required>
+            </div>
+            <div class="field span-2">
+                <label class="field-label" for="description">Keterangan</label>
+                <input class="input" id="description" type="text" name="description" placeholder="Keterangan transaksi" required>
+            </div>
+            <div class="field">
+                <label class="field-label" for="user">Penginput</label>
+                <input class="input" id="user" type="text" name="user" placeholder="Nama penginput" required>
+            </div>
+        </div>
+        <div class="form-actions">
+            <span class="spacer"></span>
+            <button type="submit" class="btn btn--primary">Simpan Transaksi</button>
+        </div>
+    </form>
+</section>
+
+<section class="card">
+    <div class="card-head">
+        <div class="card-title-wrap">
+            <span class="eyebrow">History</span>
+            <h2 class="card-title">Riwayat Transaksi</h2>
+        </div>
+        <span class="badge primary">{{ transactions|length }} transaksi</span>
+    </div>
+    <div class="table-scroll">
+        <table class="table data-table">
+            <thead>
+                <tr><th>Tanggal</th><th>Tipe</th><th>Jumlah</th><th>Keterangan</th><th>Penginput</th></tr>
+            </thead>
+            <tbody>
+                {% for trx in transactions %}
+                <tr>
+                    <td class="mono-cell">{{ trx.date.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>{% if trx.type == 'in' %}<span class="badge success dot">Masuk</span>{% else %}<span class="badge danger dot">Keluar</span>{% endif %}</td>
+                    <td class="money-cell {% if trx.type == 'in' %}positive{% else %}negative{% endif %}">Rp {{ "{:,.0f}".format(trx.amount) }}</td>
+                    <td>{{ trx.description }}</td>
+                    <td>{{ trx.user }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5"><div class="empty-state compact"><strong>Belum ada transaksi</strong><span>Transaksi yang disimpan akan muncul di sini.</span></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

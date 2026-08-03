@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+{% block title %}Projects{% endblock %}
+{% block breadcrumb %}Projects{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-text">
+        <span class="eyebrow">Project Management</span>
+        <h1 class="hero-title">Daftar <span class="accent">Project / Tasks</span></h1>
+        <p class="hero-sub">Buat task, tulis deskripsi dengan beberapa baris, dan catat siapa saja yang berkontribusi.</p>
+    </div>
+</section>
+
+{% if error %}
+<div class="alert danger section-gap">{{ error }}</div>
+{% endif %}
+
+<section class="card section-gap">
+    <div class="card-head">
+        <div class="card-title-wrap"><span class="eyebrow">New Task</span><h2 class="card-title">Tambah Task</h2></div>
+    </div>
+    <form method="POST">
+        <div class="form-grid task-form-grid">
+            <div class="field">
+                <label class="field-label" for="title">Judul task</label>
+                <input class="input" id="title" type="text" name="title" placeholder="Judul task" required>
+            </div>
+            <div class="field span-2">
+                <label class="field-label" for="description">Deskripsi</label>
+                <textarea class="input textarea task-description-input" id="description" name="description" rows="6" placeholder="Tuliskan detail pekerjaan. Tekan Enter untuk membuat baris baru." required></textarea>
+                <span class="field-help">Format baris baru akan tetap ditampilkan pada kartu task.</span>
+            </div>
+            <fieldset class="field span-2 contributor-fieldset">
+                <legend class="field-label">Kontributor</legend>
+                <div class="contributor-grid">
+                    {% for member in members %}
+                    <label class="contributor-option">
+                        <input type="checkbox" name="contributors" value="{{ member.name }}">
+                        <span class="contributor-avatar">{{ member.name[:2]|upper }}</span>
+                        <span><strong>{{ member.name }}</strong><small>{{ member.role }}</small></span>
+                    </label>
+                    {% else %}
+                    <div class="field-help">Belum ada anggota. Tambahkan anggota terlebih dahulu dari menu Anggota.</div>
+                    {% endfor %}
+                </div>
+            </fieldset>
+        </div>
+        <div class="form-actions"><span class="spacer"></span><button type="submit" class="btn btn--primary">Tambah Task</button></div>
+    </form>
+</section>
+
+<div class="grid">
+    <section class="col-6 card">
+        <div class="card-head">
+            <div class="card-title-wrap"><span class="eyebrow">In Progress</span><h2 class="card-title">Active Tasks</h2></div>
+            <span class="badge warning">{{ active_tasks|length }} aktif</span>
+        </div>
+        <div class="project-list">
+            {% for task in active_tasks %}
+            <article class="project-item">
+                <div class="project-item-head">
+                    <div><span class="badge warning dot">Active</span><h3>{{ task.title }}</h3></div>
+                    <a href="{{ url_for('complete_task', task_id=task._id) }}" class="btn btn--success btn--small">Mark as Done</a>
+                </div>
+                <p class="preserve-lines">{{ task.description }}</p>
+                <div class="task-contributors">
+                    <span class="task-meta-label">Kontributor</span>
+                    <div class="contributor-chips">
+                        {% for person in task.contributors or [] %}
+                        <span class="contributor-chip">{{ person }}</span>
+                        {% else %}
+                        <span class="contributor-empty">Belum ditentukan</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                <details class="task-contributor-editor">
+                    <summary>Ubah kontributor</summary>
+                    <form method="POST" action="{{ url_for('update_task_contributors', task_id=task._id) }}">
+                        <div class="contributor-grid contributor-grid--compact">
+                            {% for member in members %}
+                            <label class="contributor-option contributor-option--compact">
+                                <input type="checkbox" name="contributors" value="{{ member.name }}" {% if member.name in (task.contributors or []) %}checked{% endif %}>
+                                <span>{{ member.name }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                        <button class="btn btn--secondary btn--small" type="submit">Simpan Kontributor</button>
+                    </form>
+                </details>
+                <span class="project-date">Dibuat: {{ task.date_created.strftime('%d/%m/%Y') if task.date_created else '-' }}</span>
+            </article>
+            {% else %}
+            <div class="empty-state compact"><strong>Tidak ada task aktif</strong><span>Task baru akan masuk ke bagian ini.</span></div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="col-6 card">
+        <div class="card-head">
+            <div class="card-title-wrap"><span class="eyebrow">Completed</span><h2 class="card-title">Passed Tasks</h2></div>
+            <span class="badge success">{{ passed_tasks|length }} selesai</span>
+        </div>
+        <div class="project-list">
+            {% for task in passed_tasks %}
+            <article class="project-item is-passed">
+                <div class="project-item-head"><div><span class="badge success dot">Passed</span><h3>{{ task.title }}</h3></div></div>
+                <p class="preserve-lines">{{ task.description }}</p>
+                <div class="task-contributors">
+                    <span class="task-meta-label">Kontributor</span>
+                    <div class="contributor-chips">
+                        {% for person in task.contributors or [] %}
+                        <span class="contributor-chip">{{ person }}</span>
+                        {% else %}
+                        <span class="contributor-empty">Belum ditentukan</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                <details class="task-contributor-editor">
+                    <summary>Ubah kontributor</summary>
+                    <form method="POST" action="{{ url_for('update_task_contributors', task_id=task._id) }}">
+                        <div class="contributor-grid contributor-grid--compact">
+                            {% for member in members %}
+                            <label class="contributor-option contributor-option--compact">
+                                <input type="checkbox" name="contributors" value="{{ member.name }}" {% if member.name in (task.contributors or []) %}checked{% endif %}>
+                                <span>{{ member.name }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                        <button class="btn btn--secondary btn--small" type="submit">Simpan Kontributor</button>
+                    </form>
+                </details>
+            </article>
+            {% else %}
+            <div class="empty-state compact"><strong>Belum ada task selesai</strong><span>Task yang ditandai selesai akan pindah ke sini.</span></div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}

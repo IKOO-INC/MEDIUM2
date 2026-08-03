@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% block title %}DB Console{% endblock %}
+{% block breadcrumb %}DB Console{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-text">
+        <span class="eyebrow">System Tool</span>
+        <h1 class="hero-title">Database <span class="accent">Console</span></h1>
+        <p class="hero-sub">Alat migrasi untuk menambahkan key baru ke data yang sudah tersimpan. Gunakan dengan hati-hati.</p>
+    </div>
+</section>
+
+{% if message %}
+<div class="alert {% if status_type == 'danger' %}danger{% else %}success{% endif %} section-gap" role="alert">
+    <span class="ico"><svg viewBox="0 0 24 24">{% if status_type == 'danger' %}<circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/>{% else %}<path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><path d="m22 4-10 10-3-3"/>{% endif %}</svg></span>
+    <div class="body"><div class="title">{% if status_type == 'danger' %}Migrasi gagal{% else %}Migrasi berhasil{% endif %}</div>{{ message }}</div>
+</div>
+{% endif %}
+
+<div class="grid">
+    <section class="col-6 card console-card-warning">
+        <div class="card-head"><div class="card-title-wrap"><span class="eyebrow">Mass Update</span><h2 class="card-title">Broadcast Key Baru</h2></div><span class="badge warning">Permanen</span></div>
+        <p class="card-description">Gunakan alat ini untuk menyuntikkan properti atau kolom baru ke semua data yang sudah ada.</p>
+        <form method="POST">
+            <div class="form-grid form-grid--single">
+                <div class="field">
+                    <label class="field-label" for="target">Target data</label>
+                    <select class="select select--full" id="target" name="target" required>
+                        <option value="members">Data Anggota Tim (User)</option>
+                        <option value="finance">Data Kas (Transaksi)</option>
+                        <option value="attendance">Data Absensi</option>
+                        <option value="tasks">Data Tasks / Project</option>
+                        <option value="assets">Data Assets</option>
+                        <option value="announcements">Data Pengumuman</option>
+                        <option value="ai_chat_logs">Log FYY AI</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label class="field-label" for="new_key">Nama key / field baru</label>
+                    <input class="input" id="new_key" type="text" name="new_key" placeholder="contoh: no_hp, gaji_pokok, shift_kerja" required>
+                    <span class="field-help">Gunakan nama tanpa spasi.</span>
+                </div>
+                <div class="field">
+                    <label class="field-label" for="default_val">Nilai default awal</label>
+                    <input class="input" id="default_val" type="text" name="default_val" placeholder="contoh: -, 0, atau Belum Diisi" required>
+                </div>
+            </div>
+            <div class="form-actions"><button type="submit" class="btn btn--warning full-width" onclick="return confirm('Yakin ingin membroadcast key ini ke database? Perubahan ini bersifat permanen.')">Jalankan Migrasi Database</button></div>
+        </form>
+    </section>
+
+    <section class="col-6 card">
+        <div class="card-head"><div class="card-title-wrap"><span class="eyebrow">Petunjuk</span><h2 class="card-title">Cara Kerja Console</h2></div></div>
+        <div class="console-guide">
+            <p>Jika targetnya <strong>Data Anggota Tim</strong>, key diisi <code>no_hp</code>, dan default diisi <code>-</code>, struktur awal:</p>
+            <pre><code>{"name": "Budi", "role": "Editor"}</code></pre>
+            <div class="console-arrow">↓</div>
+            <p>Akan otomatis berubah menjadi:</p>
+            <pre><code>{"name": "Budi", "role": "Editor", "no_hp": "-"}</code></pre>
+            <div class="alert info">
+                <span class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span>
+                <div class="body">Fitur ini berguna saat Anda menambahkan variabel baru tanpa menghapus data lama.</div>
+            </div>
+        </div>
+    </section>
+</div>
+{% endblock %}

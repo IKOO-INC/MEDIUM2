@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block title %}Absen Manual{% endblock %}
+{% block breadcrumb %}Absen Manual{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-text">
+        <span class="eyebrow">Manual Attendance</span>
+        <h1 class="hero-title">Input <span class="accent">Absen Manual</span></h1>
+        <p class="hero-sub">Gunakan form ini ketika anggota tidak melakukan scan QR.</p>
+    </div>
+    <div class="hero-actions">
+        <a class="btn btn--secondary" href="{{ url_for('attendance') }}">Lihat Rekap</a>
+        <a class="btn btn--primary" href="{{ url_for('attendance_scan') }}">Pindah ke Scan QR</a>
+    </div>
+</section>
+
+<section class="card attendance-form-card">
+    <div class="card-head">
+        <div class="card-title-wrap">
+            <span class="eyebrow">Form Manual</span>
+            <h2 class="card-title">Data Kehadiran</h2>
+        </div>
+        <span class="badge warning">MANUAL</span>
+    </div>
+
+    {% if error %}<div class="alert danger">{{ error }}</div>{% endif %}
+
+    <form method="POST" action="{{ url_for('attendance_manual') }}">
+        <div class="form-grid attendance-form-grid">
+            <div class="field">
+                <label class="field-label" for="name">Anggota <span class="req">*</span></label>
+                <select class="select select--full" id="name" name="name" required>
+                    <option value="">-- Pilih Anggota --</option>
+                    {% for member in members %}
+                        <option value="{{ member.name }}">{{ member.name }} - {{ member.role }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field">
+                <label class="field-label" for="status">Status <span class="req">*</span></label>
+                <select class="select select--full" id="status" name="status" required>
+                    <option value="Hadir">Hadir</option>
+                    <option value="Izin">Izin</option>
+                    <option value="Sakit">Sakit</option>
+                </select>
+            </div>
+            <div class="field span-2">
+                <label class="field-label" for="notes">Keterangan</label>
+                <textarea class="input textarea" id="notes" name="notes" rows="4" placeholder="Contoh: Hadir tepat waktu, izin kegiatan, atau keterangan lain"></textarea>
+            </div>
+        </div>
+        <div class="form-actions">
+            <span class="field-help">Absensi akan dicatat dengan metode Manual.</span>
+            <span class="spacer"></span>
+            <button type="submit" class="btn btn--primary">Simpan Absen Manual</button>
+        </div>
+    </form>
+</section>
+{% endblock %}

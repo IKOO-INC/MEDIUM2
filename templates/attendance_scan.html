@@ -1,0 +1,176 @@
+{% extends 'base.html' %}
+{% block title %}Scan QR Absensi{% endblock %}
+{% block breadcrumb %}Scan QR{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-text">
+        <span class="eyebrow">QR Attendance</span>
+        <h1 class="hero-title">Scan QR <span class="accent">Anggota</span></h1>
+        <p class="hero-sub">Arahkan kamera ke QR anggota. Setelah terbaca, sistem akan membuka form keterangan untuk anggota tersebut.</p>
+    </div>
+    <div class="hero-actions">
+        <a class="btn btn--secondary" href="{{ url_for('attendance') }}">Lihat Rekap</a>
+        <a class="btn btn--secondary" href="{{ url_for('attendance_manual') }}">Absen Manual</a>
+    </div>
+</section>
+
+<div class="grid">
+    <section class="col-7 card scanner-card">
+        <div class="card-head">
+            <div class="card-title-wrap">
+                <span class="eyebrow">Camera Scanner</span>
+                <h2 class="card-title">Arahkan QR ke Kamera</h2>
+            </div>
+            <span class="badge primary">SCAN</span>
+        </div>
+        <div id="scannerStatus" class="scanner-status">Menyiapkan kamera…</div>
+        <div id="qr-reader" class="qr-reader"></div>
+        <div id="nativeScanner" class="native-scanner" hidden>
+            <video id="scannerVideo" playsinline muted></video>
+            <div class="scanner-frame" aria-hidden="true"></div>
+        </div>
+    </section>
+
+    <section class="col-5 card">
+        <div class="card-head">
+            <div class="card-title-wrap">
+                <span class="eyebrow">Petunjuk</span>
+                <h2 class="card-title">Cara Menggunakan</h2>
+            </div>
+        </div>
+        <ol class="scan-steps">
+            <li>Izinkan browser mengakses kamera.</li>
+            <li>Arahkan QR anggota ke area pemindai.</li>
+            <li>Nama anggota akan ditentukan otomatis.</li>
+            <li>Pilih status dan isi keterangan, lalu simpan.</li>
+        </ol>
+        <div class="scanner-fallback">
+            <label class="field-label" for="qrText">Tempel hasil QR secara manual</label>
+            <div class="fallback-row">
+                <input class="input" id="qrText" type="text" placeholder="URL atau token QR anggota">
+                <button class="btn btn--secondary" id="openQrText" type="button">Buka</button>
+            </div>
+            <span class="field-help">Dipakai jika kamera tidak tersedia atau QR dibaca dari perangkat lain.</span>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+(function () {
+    'use strict';
+
+    var statusBox = document.getElementById('scannerStatus');
+    var reader = document.getElementById('qr-reader');
+    var nativeWrap = document.getElementById('nativeScanner');
+    var video = document.getElementById('scannerVideo');
+    var manualInput = document.getElementById('qrText');
+    var manualButton = document.getElementById('openQrText');
+    var scanPrefix = {{ url_for('attendance_scan')|tojson }};
+    var locked = false;
+    var nativeStream = null;
+
+    function setStatus(message, type) {
+        statusBox.textContent = message;
+        statusBox.className = 'scanner-status' + (type ? ' is-' + type : '');
+    }
+
+    function resolveScannedValue(value) {
+        if (locked) return;
+        var raw = String(value || '').trim();
+        if (!raw) {
+            setStatus('QR tidak berisi data yang dapat dibaca.', 'error');
+            return;
+        }
+
+        var target = '';
+        try {
+            var parsed = new URL(raw, window.location.origin);
+            var expectedPart = scanPrefix.replace(/\/$/, '') + '/';
+            if (parsed.pathname.indexOf(expectedPart) === 0) {
+                target = parsed.pathname + parsed.search;
+            }
+        } catch (error) {}
+
+        if (!target && /^[a-f0-9]{32}$/i.test(raw)) {
+            target = scanPrefix.replace(/\/$/, '') + '/' + raw;
+        }
+
+        if (!target) {
+            setStatus('QR ini bukan QR absensi anggota yang valid.', 'error');
+            return;
+        }
+
+        locked = true;
+        setStatus('QR berhasil dibaca. Membuka data anggota…', 'success');
+        window.location.assign(target);
+    }
+
+    function startHtml5Scanner() {
+        if (typeof Html5QrcodeScanner === 'undefined') return false;
+        setStatus('Kamera siap. Arahkan QR anggota ke area scan.', 'ready');
+        var scanner = new Html5QrcodeScanner('qr-reader', {
+            fps: 10,
+            qrbox: { width: 230, height: 230 },
+            rememberLastUsedCamera: true,
+            supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA, Html5QrcodeScanType.SCAN_TYPE_FILE]
+        }, false);
+        scanner.render(resolveScannedValue, function () {});
+        return true;
+    }
+
+    async function startNativeScanner() {
+        if (!('BarcodeDetector' in window) || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            setStatus('Pemindai kamera tidak didukung. Gunakan Chrome terbaru atau tempel hasil QR secara manual.', 'error');
+            return;
+        }
+
+        try {
+            reader.hidden = true;
+            nativeWrap.hidden = false;
+            var detector = new BarcodeDetector({ formats: ['qr_code'] });
+            nativeStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: 'environment' } },
+                audio: false
+            });
+            video.srcObject = nativeStream;
+            await video.play();
+            setStatus('Kamera siap. Arahkan QR anggota ke kotak scan.', 'ready');
+
+            async function detect() {
+                if (locked) return;
+                try {
+                    var codes = await detector.detect(video);
+                    if (codes.length) {
+                        resolveScannedValue(codes[0].rawValue);
+                        return;
+                    }
+                } catch (error) {}
+                window.setTimeout(detect, 450);
+            }
+            detect();
+        } catch (error) {
+            setStatus('Kamera tidak dapat dibuka. Periksa izin kamera atau gunakan input manual.', 'error');
+        }
+    }
+
+    manualButton.addEventListener('click', function () {
+        resolveScannedValue(manualInput.value);
+    });
+    manualInput.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') resolveScannedValue(manualInput.value);
+    });
+
+    window.addEventListener('beforeunload', function () {
+        if (nativeStream) nativeStream.getTracks().forEach(function (track) { track.stop(); });
+    });
+
+    window.setTimeout(function () {
+        if (!startHtml5Scanner()) startNativeScanner();
+    }, 100);
+}());
+</script>
+{% endblock %}

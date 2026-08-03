@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+{% block title %}Rekap Absensi{% endblock %}
+{% block breadcrumb %}Rekap Absensi{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-text">
+        <span class="eyebrow">Attendance</span>
+        <h1 class="hero-title">Rekap & <span class="accent">Statistik Absensi</span></h1>
+        <p class="hero-sub">Pantau kehadiran anggota dari absen manual maupun hasil scan QR.</p>
+    </div>
+    <div class="hero-actions">
+        <a class="btn btn--secondary" href="{{ url_for('attendance_manual') }}">Absen Manual</a>
+        <a class="btn btn--primary" href="{{ url_for('attendance_scan') }}">Scan QR</a>
+    </div>
+</section>
+
+{% if saved %}
+<div class="alert success section-gap">
+    Absensi {% if saved == 'scan' %}hasil scan QR{% else %}manual{% endif %} berhasil disimpan.
+</div>
+{% endif %}
+
+<div class="attendance-entry-grid section-gap">
+    <a class="attendance-entry-card" href="{{ url_for('attendance_manual') }}">
+        <span class="attendance-entry-icon">
+            <svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h5M8 17h3"/></svg>
+        </span>
+        <span><strong>Absen Manual</strong><small>Pilih anggota dari form secara langsung.</small></span>
+        <span class="attendance-entry-arrow">→</span>
+    </a>
+    <a class="attendance-entry-card" href="{{ url_for('attendance_scan') }}">
+        <span class="attendance-entry-icon is-scan">
+            <svg viewBox="0 0 24 24"><path d="M3 8V3h5M16 3h5v5M21 16v5h-5M8 21H3v-5"/><path d="M8 8h3v3H8zM14 8h2v2h-2zM8 14h2v2H8zM13 13h3v3h-3z"/></svg>
+        </span>
+        <span><strong>Scan QR Anggota</strong><small>Kamera menentukan anggota, lalu isi keterangannya.</small></span>
+        <span class="attendance-entry-arrow">→</span>
+    </a>
+</div>
+
+<section class="card section-gap">
+    <div class="card-head">
+        <div class="card-title-wrap">
+            <span class="eyebrow">Kehadiran Wajib</span>
+            <h2 class="card-title">Statistik Senin & Sabtu</h2>
+        </div>
+        <span class="badge info">{{ stats|length }} anggota</span>
+    </div>
+    <div class="table-scroll">
+        <table class="table data-table">
+            <thead>
+                <tr><th>Nama Anggota</th><th>Role</th><th>Hari Wajib</th><th>Hadir</th><th>Izin</th><th>Sakit</th><th>Persentase</th></tr>
+            </thead>
+            <tbody>
+                {% for name, data in stats.items() %}
+                <tr>
+                    <td><strong>{{ name }}</strong></td>
+                    <td><span class="badge purple">{{ data.Role }}</span></td>
+                    <td>{{ data.Wajib_Hadir }}x</td>
+                    <td><span class="status-number success-text">{{ data.Hadir }}</span></td>
+                    <td><span class="status-number warning-text">{{ data.Izin }}</span></td>
+                    <td><span class="status-number danger-text">{{ data.Sakit }}</span></td>
+                    <td>
+                        {% if data.Wajib_Hadir > 0 %}
+                            {% set pct = (data.Hadir / data.Wajib_Hadir) * 100 %}
+                            <span class="badge {% if pct >= 80 %}success{% elif pct >= 50 %}warning{% else %}danger{% endif %}">{{ pct | round(1) }}%</span>
+                        {% else %}
+                            <span class="badge">0%</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7"><div class="empty-state compact"><strong>Statistik belum tersedia</strong><span>Tambahkan anggota untuk mulai merekap kehadiran.</span></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="card">
+    <div class="card-head">
+        <div class="card-title-wrap"><span class="eyebrow">History</span><h2 class="card-title">Riwayat Absensi</h2></div>
+        <span class="badge primary">{{ records|length }} catatan</span>
+    </div>
+    <div class="table-scroll">
+        <table class="table data-table">
+            <thead><tr><th>Tanggal / Waktu</th><th>Hari</th><th>Nama</th><th>Status</th><th>Metode</th><th>Keterangan</th></tr></thead>
+            <tbody>
+                {% for rec in records %}
+                <tr>
+                    <td class="mono-cell">{{ rec.date_submitted.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>{{ rec.hari_indo }} {% if rec.is_wajib %}<span class="badge danger">Wajib</span>{% else %}<span class="badge">Bebas</span>{% endif %}</td>
+                    <td><strong>{{ rec.name }}</strong></td>
+                    <td>{% if rec.status == 'Hadir' %}<span class="badge success dot">Hadir</span>{% elif rec.status == 'Izin' %}<span class="badge warning dot">Izin</span>{% else %}<span class="badge danger dot">Sakit</span>{% endif %}</td>
+                    <td>{% if rec.method == 'scan' %}<span class="badge primary">Scan QR</span>{% else %}<span class="badge">Manual</span>{% endif %}</td>
+                    <td>{{ rec.notes or '-' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6"><div class="empty-state compact"><strong>Belum ada riwayat</strong><span>Absensi yang disimpan akan muncul di sini.</span></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
