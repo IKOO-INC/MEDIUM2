@@ -30,9 +30,15 @@
                 <textarea class="input textarea task-description-input" id="description" name="description" rows="6" placeholder="Tuliskan detail pekerjaan. Tekan Enter untuk membuat baris baru." required></textarea>
                 <span class="field-help">Format baris baru akan tetap ditampilkan pada kartu task.</span>
             </div>
-            <fieldset class="field span-2 contributor-fieldset">
-                <legend class="field-label">Kontributor</legend>
-                <div class="contributor-grid">
+            <div class="field span-2 contributor-picker-wrap">
+                <details class="contributor-picker">
+                    <summary>
+                        <span>Kontributor</span>
+                        <small>Pilih anggota yang terlibat (opsional)</small>
+                    </summary>
+                    <fieldset class="contributor-fieldset">
+                        <legend class="sr-only">Kontributor</legend>
+                        <div class="contributor-grid">
                     {% for member in members %}
                     <label class="contributor-option">
                         <input type="checkbox" name="contributors" value="{{ member.name }}">
@@ -42,8 +48,10 @@
                     {% else %}
                     <div class="field-help">Belum ada anggota. Tambahkan anggota terlebih dahulu dari menu Anggota.</div>
                     {% endfor %}
-                </div>
-            </fieldset>
+                        </div>
+                    </fieldset>
+                </details>
+            </div>
         </div>
         <div class="form-actions"><span class="spacer"></span><button type="submit" class="btn btn--primary">Tambah Task</button></div>
     </form>
