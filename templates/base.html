@@ -73,10 +73,19 @@
                 <svg viewBox="0 0 24 24"><path d="M4 13V7a2 2 0 0 1 2-2h7l5-3v16l-5-3H6a2 2 0 0 1-2-2Z"/><path d="M8 15v5h4v-5"/></svg>
                 <span>Pengumuman</span>
             </a>
+        </nav>
+
+        <nav class="nav-section" aria-label="Menu tools">
+            <div class="nav-label">Tools</div>
             <a class="nav-link {% if request.endpoint in ['fyy_ai', 'fyy_ai_chat', 'clear_fyy_ai_chat'] %}is-active{% endif %}" href="{{ url_for('fyy_ai') }}">
                 <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="15" rx="3"/><path d="M8 2v3M16 2v3M8 11h.01M16 11h.01M8 16h8"/></svg>
                 <span>FYY AI</span>
                 <span class="nav-badge">AI</span>
+            </a>
+            <a class="nav-link {% if request.endpoint == 'ytmp3' %}is-active{% endif %}" href="{{ url_for('ytmp3') }}">
+                <svg viewBox="0 0 24 24"><path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg>
+                <span>YTMP3</span>
+                <span class="nav-badge">TOOL</span>
             </a>
         </nav>
 
