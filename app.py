@@ -965,8 +965,6 @@ def ytmp3():
                 return redirect(yo['result']['link'])
                 break
             print('mencoba apikey lain')
-        app.logger.warning('hayoloh gapunya apikey')
-        error = 'Coba lagi atau kembali besok'
 
     return render_template(
         'ytmp3.html',
