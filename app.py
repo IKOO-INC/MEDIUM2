@@ -1134,7 +1134,7 @@ def download_with_lolhuman(youtube_url):
             if temp_dir:
                 shutil.rmtree(temp_dir, ignore_errors=True)
             app.logger.warning('LOLHuman key #%s gagal: %s', index, exc)
-            errors.append(f'key #{index}: {type(exc).__name__}')
+            errors.append(f'key #{index}: {type(exc).__name__}: {str(exc)[:180]}')
 
     raise YtMp3ProviderError(
         'Semua API key LOLHuman gagal digunakan (' + ', '.join(errors) + ').'
