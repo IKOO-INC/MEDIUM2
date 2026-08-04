@@ -935,25 +935,34 @@ class YtMp3ProviderError(RuntimeError):
     """Kesalahan terkontrol dari provider YTMP3."""
 
 
-def get_lolhuman_api_keys():
-    """Ambil daftar API key dari env `lol` sebagai JSON array atau CSV/newline."""
-    raw = (os.getenv('lol') or os.getenv('LOL') or '').strip()
+def _parse_env_list(raw, default=None):
+    """Parse JSON array, CSV, atau daftar multiline dari environment."""
+    raw = (raw or '').strip()
     if not raw:
-        return []
+        return list(default or [])
 
     try:
         parsed = json.loads(raw)
         if isinstance(parsed, list):
             return list(dict.fromkeys(
-                str(item).strip() for item in parsed if str(item).strip()
+                str(item).strip()
+                for item in parsed
+                if str(item).strip()
             ))
     except (json.JSONDecodeError, TypeError):
         pass
 
     normalized = raw.replace('\r\n', '\n').replace('\r', '\n').replace('\n', ',')
     return list(dict.fromkeys(
-        item.strip() for item in normalized.split(',') if item.strip()
+        item.strip()
+        for item in normalized.split(',')
+        if item.strip()
     ))
+
+
+def get_lolhuman_api_keys():
+    """Ambil daftar API key dari env `lol` sebagai JSON array atau CSV/newline."""
+    return _parse_env_list(os.getenv('lol') or os.getenv('LOL'))
 
 
 def is_youtube_url(value):
@@ -1011,7 +1020,6 @@ def extract_lolhuman_download(payload):
     candidates.sort(key=lambda item: 0 if item[0] else 1)
     audio_url = candidates[0][1]
 
-    title = None
     def find_title(value):
         if isinstance(value, dict):
             for key in ('title', 'name', 'filename', 'file_name'):
@@ -1029,22 +1037,27 @@ def extract_lolhuman_download(payload):
                     return result
         return None
 
-    title = find_title(payload)
-    return audio_url, title
+    return audio_url, find_title(payload)
 
 
-def _safe_audio_filename(title, default='youtube-audio'):
+def _safe_audio_filename(title, default='youtube-audio', extension='.mp3'):
     cleaned = secure_filename((title or '').strip())
     if not cleaned:
         cleaned = default
-    if not cleaned.lower().endswith('.mp3'):
-        cleaned += '.mp3'
+
+    extension = extension if extension.startswith('.') else f'.{extension}'
+    if not cleaned.lower().endswith(extension.lower()):
+        cleaned += extension
     return cleaned[:180]
 
 
 def _stream_url_to_file(url, directory, filename='youtube-audio.mp3'):
-    """Unduh audio URL ke file temp dengan batas ukuran 64MB."""
-    max_bytes = int(os.getenv('YTMP3_MAX_MB', '64')) * 1024 * 1024
+    """Unduh audio URL ke file temp dengan batas ukuran."""
+    try:
+        max_mb = int(os.getenv('YTMP3_MAX_MB', '64'))
+    except (TypeError, ValueError):
+        max_mb = 64
+    max_bytes = max(1, max_mb) * 1024 * 1024
     output_path = os.path.join(directory, filename)
     request = UrlRequest(url, headers={
         'User-Agent': 'FYY-Media/1.0',
@@ -1087,6 +1100,7 @@ def download_with_lolhuman(youtube_url):
     errors = []
 
     for index, api_key in enumerate(key_order, start=1):
+        temp_dir = None
         try:
             query = urlencode({'apikey': api_key, 'url': youtube_url})
             request = UrlRequest(
@@ -1105,6 +1119,8 @@ def download_with_lolhuman(youtube_url):
             output_path = _stream_url_to_file(audio_url, temp_dir, filename)
             return output_path, filename, temp_dir, 'LOLHuman'
         except Exception as exc:
+            if temp_dir:
+                shutil.rmtree(temp_dir, ignore_errors=True)
             app.logger.warning('LOLHuman key #%s gagal: %s', index, exc)
             errors.append(f'key #{index}: {type(exc).__name__}')
 
@@ -1113,116 +1129,19 @@ def download_with_lolhuman(youtube_url):
     )
 
 
-def _extract_converso_output_file(result):
-    """Ambil path file dari object/dict result Converso secara kompatibel."""
-    if isinstance(result, str):
-        return result
-    if isinstance(result, dict):
-        for key in ('output_file', 'output_path', 'file_path', 'path'):
-            if result.get(key):
-                return str(result[key])
-    for key in ('output_file', 'output_path', 'file_path', 'path'):
-        value = getattr(result, key, None)
-        if value:
-            return str(value)
-    return None
-
-
-def download_with_converso(youtube_url):
-    """Gunakan Converso MediaDownloader untuk menghasilkan MP3 lokal."""
-    if not shutil.which('ffmpeg'):
-        raise YtMp3ProviderError(
-            'Converso membutuhkan FFmpeg yang terpasang di server. '
-            'Provider ini dilewati dan sistem akan mencoba provider lain.'
-        )
-
-    try:
-        from converso_ytdl import MediaDownloader, DownloadConfig
-        import inspect
-    except ImportError as exc:
-        raise YtMp3ProviderError(
-            'Package converso-ytdl belum terpasang di server.'
-        ) from exc
-
-    temp_dir = tempfile.mkdtemp(prefix='fyy-ytmp3-converso-')
-    try:
-        config_kwargs = {'output_dir': temp_dir, 'verbose': False}
-        try:
-            signature = inspect.signature(DownloadConfig)
-            if 'audio_codec' in signature.parameters:
-                config_kwargs['audio_codec'] = 'mp3'
-            if 'retries' in signature.parameters:
-                config_kwargs['retries'] = 2
-            if 'embed_metadata' in signature.parameters:
-                config_kwargs['embed_metadata'] = True
-        except (TypeError, ValueError):
-            pass
-
-        config = DownloadConfig(**config_kwargs)
-        downloader = MediaDownloader(config)
-        download_audio = getattr(downloader, 'download_audio', None)
-        if not callable(download_audio):
-            raise YtMp3ProviderError(
-                'Versi converso-ytdl yang terpasang tidak menyediakan download_audio().'
-            )
-
-        result = download_audio(youtube_url)
-        status = getattr(result, 'status', None)
-        if isinstance(result, dict):
-            status = result.get('status', status)
-        if status and str(status).lower() not in {'success', 'completed', 'ok'}:
-            detail = getattr(result, 'error', None)
-            if isinstance(result, dict):
-                detail = result.get('error', detail)
-            raise YtMp3ProviderError(detail or 'Converso gagal mengunduh audio.')
-
-        output_file = _extract_converso_output_file(result)
-        if output_file and os.path.isfile(output_file):
-            filename = _safe_audio_filename(os.path.basename(output_file), 'youtube-audio')
-            return output_file, filename, temp_dir, 'Converso'
-
-        mp3_candidates = sorted(
-            Path(temp_dir).rglob('*.mp3'),
-            key=lambda item: item.stat().st_mtime,
-            reverse=True
-        )
-        if not mp3_candidates:
-            raise YtMp3ProviderError(
-                'Converso selesai tanpa menghasilkan file MP3 yang bisa dikirim.'
-            )
-
-        output_path = str(mp3_candidates[0])
-        filename = _safe_audio_filename(mp3_candidates[0].name, 'youtube-audio')
-        return output_path, filename, temp_dir, 'Converso'
-    except YtMp3ProviderError:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        raise
-    except Exception as exc:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        raise YtMp3ProviderError(f'Converso gagal: {exc}') from exc
-
-
-def run_ytmp3_provider(provider, youtube_url):
-    if provider == 'lolhuman':
-        return download_with_lolhuman(youtube_url)
-    if provider == 'converso':
-        return download_with_converso(youtube_url)
-    raise YtMp3ProviderError('Provider YTMP3 tidak dikenal.')
-
-
-def _send_ytmp3_file(output_path, filename, temp_dir, provider):
+def _send_ytmp3_file(result):
     response = send_file(
-        output_path,
+        result['output_path'],
         mimetype='audio/mpeg',
         as_attachment=True,
-        download_name=filename,
+        download_name=result['filename'],
         max_age=0
     )
-    response.headers['X-YTMP3-Provider'] = provider
+    response.headers['X-YTMP3-Provider'] = result['provider']
 
     @response.call_on_close
     def cleanup_ytmp3_file():
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        shutil.rmtree(result['temp_dir'], ignore_errors=True)
 
     return response
 
@@ -1231,51 +1150,29 @@ def _send_ytmp3_file(output_path, filename, temp_dir, provider):
 def ytmp3():
     error = ''
     youtube_url = ''
-    selected_mode = 'normal'
-    provider_used = None
 
     if request.method == 'POST':
         youtube_url = (request.form.get('url') or '').strip()
-        selected_mode = (request.form.get('mode') or 'normal').strip().lower()
 
         if not is_youtube_url(youtube_url):
             error = 'Masukkan URL YouTube yang valid.'
         else:
-            if selected_mode == 'normal':
-                providers = ['lolhuman', 'converso']
-                random.shuffle(providers)
-            elif selected_mode in {'lolhuman', 'converso'}:
-                providers = [selected_mode]
-            else:
-                providers = ['lolhuman', 'converso']
-                random.shuffle(providers)
-
-            provider_errors = []
-            for provider in providers:
-                try:
-                    output_path, filename, temp_dir, provider_used = run_ytmp3_provider(
-                        provider, youtube_url
-                    )
-                    return _send_ytmp3_file(
-                        output_path, filename, temp_dir, provider_used
-                    )
-                except Exception as exc:
-                    app.logger.warning('YTMP3 provider %s gagal: %s', provider, exc)
-                    provider_errors.append(
-                        f'{provider}: {str(exc)[:180]}'
-                    )
-
-            error = (
-                'Semua provider YTMP3 gagal. ' +
-                ' | '.join(provider_errors)
-            )
+            try:
+                result = download_with_lolhuman(youtube_url)
+                return _send_ytmp3_file({
+                    'output_path': result[0],
+                    'filename': result[1],
+                    'temp_dir': result[2],
+                    'provider': result[3]
+                })
+            except Exception as exc:
+                app.logger.warning('YTMP3 LOLHuman gagal: %s', exc)
+                error = str(exc)
 
     return render_template(
         'ytmp3.html',
         error=error,
         youtube_url=youtube_url,
-        selected_mode=selected_mode,
-        provider_used=provider_used,
         lolhuman_key_count=len(get_lolhuman_api_keys())
     )
 
