@@ -10,8 +10,13 @@ from io import BytesIO
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse, unquote
 from urllib.request import Request as UrlRequest, urlopen
+import json
 import os
+import random
+import shutil
+import tempfile
 import uuid
+from pathlib import Path
 from datetime import datetime, timedelta
 
 import cloudinary
@@ -21,7 +26,6 @@ from google import genai
 
 import qrcode
 from qrcode.constants import ERROR_CORRECT_M
-
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'fyy-medium-dev-secret-change-me')
 
