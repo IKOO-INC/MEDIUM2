@@ -53,14 +53,49 @@
     </article>
 </section>
 
-<section class="card">
-    <div class="card-head">
-        <div class="card-title-wrap">
-            <span class="eyebrow">Project</span>
-            <h2 class="card-title">Preview Task Aktif</h2>
+<section class="dashboard-section-gap">
+    <div class="section-heading-row">
+        <div>
+            <span class="eyebrow">Tools</span>
+            <h2 class="section-title">Alat Cepat Tim</h2>
         </div>
-        <a class="card-action" href="{{ url_for('tasks') }}">Lihat semua <svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg></a>
+        <span class="section-caption">FYY AI dan downloader YTMP3</span>
     </div>
+    <div class="tools-grid">
+        <a class="tool-card" href="{{ url_for('fyy_ai') }}">
+            <div class="tool-icon tool-icon--ai">
+                <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="15" rx="3"/><path d="M8 2v3M16 2v3M8 11h.01M16 11h.01M8 16h8"/></svg>
+            </div>
+            <div class="tool-card-body">
+                <span class="badge info dot">AI Assistant</span>
+                <h3>FYY AI</h3>
+                <p>Tanya ide, buat caption, susun konsep konten, dan bantu pekerjaan tim.</p>
+            </div>
+            <svg class="tool-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </a>
+        <a class="tool-card" href="{{ url_for('ytmp3') }}">
+            <div class="tool-icon tool-icon--audio">
+                <svg viewBox="0 0 24 24"><path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg>
+            </div>
+            <div class="tool-card-body">
+                <span class="badge success dot">YTMP3</span>
+                <h3>Download YouTube MP3</h3>
+                <p>Mode normal memilih provider secara acak dan otomatis mencoba provider cadangan jika gagal.</p>
+            </div>
+            <svg class="tool-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </a>
+    </div>
+</section>
+
+<section class="grid dashboard-section-gap">
+    <section class="col-7 card">
+        <div class="card-head">
+            <div class="card-title-wrap">
+                <span class="eyebrow">Project</span>
+                <h2 class="card-title">Preview Task Aktif</h2>
+            </div>
+            <a class="card-action" href="{{ url_for('tasks') }}">Lihat semua <svg viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg></a>
+        </div>
     <div class="task-preview-list">
         {% for task in tasks %}
         <div class="task-preview-item">
@@ -78,5 +113,40 @@
         </div>
         {% endfor %}
     </div>
+    </section>
+
+    <section class="col-5 card">
+        <div class="card-head">
+            <div class="card-title-wrap">
+                <span class="eyebrow">Info Tim</span>
+                <h2 class="card-title">Pengumuman Terbaru</h2>
+            </div>
+            <a class="card-action" href="{{ url_for('announcements') }}">Kelola</a>
+        </div>
+        <div class="announcement-list announcement-list--dashboard">
+            {% for announcement in announcements %}
+            <article class="announcement-item announcement-item--{{ announcement.priority or 'normal' }}">
+                <div class="announcement-head">
+                    <div>
+                        <span class="badge {% if announcement.priority == 'urgent' %}danger{% elif announcement.priority == 'important' %}warning{% else %}info{% endif %} dot">
+                            {{ announcement.priority|default('normal')|capitalize }}
+                        </span>
+                        <h3>{{ announcement.title }}</h3>
+                    </div>
+                </div>
+                <div class="announcement-content preserve-lines">{{ announcement.content }}</div>
+                <div class="announcement-meta">
+                    <span>{{ announcement.author or 'Admin' }}</span>
+                    <span>{{ announcement.created_at.strftime('%d/%m/%Y %H:%M') if announcement.created_at else '-' }}</span>
+                </div>
+            </article>
+            {% else %}
+            <div class="empty-state compact">
+                <strong>Belum ada pengumuman</strong>
+                <span>Info penting tim akan tampil di sini.</span>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
 </section>
 {% endblock %}
