@@ -5,4 +5,4 @@ Werkzeug==3.0.1
 qrcode[pil]==8.2
 cloudinary
 google-genai>=1.0.0
-converso-ytdl==1.1.0b0
+ytdl==1.0.0rc5
