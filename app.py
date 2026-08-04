@@ -659,6 +659,8 @@ def fyy_ai_chat():
                     'Bantu penulisan konten, ide desain, rundown, caption, administrasi tim, '
                     'serta pertanyaan umum. Pertahankan konteks percakapan yang diberikan. '
                     'Jangan mengaku telah melakukan tindakan di sistem yang sebenarnya belum dilakukan.'
+                    'Kurangi jawaban point panjang 1 sampai 5, buat saja 2 point tapi secara detail, dan berisi.'
+                    'Jika dimintai caption atau kata kata, buat dalam bahasa sastra indonesia yang sangat bermakna.'
                 ),
                 'temperature': 0.7,
                 'max_output_tokens': 1200
