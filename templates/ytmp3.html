@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block title %}YTMP3{% endblock %}
+{% block breadcrumb %}Tools / YTMP3{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-text">
+        <span class="eyebrow">Tools</span>
+        <h1 class="hero-title">YouTube <span class="accent">to MP3</span></h1>
+        <p class="hero-sub">Mode normal akan memilih LOLHuman atau Converso secara acak. Jika provider pertama gagal, provider lain otomatis dicoba.</p>
+    </div>
+</section>
+
+{% if error %}
+<div class="alert danger section-gap">{{ error }}</div>
+{% endif %}
+
+<section class="grid ytmp3-layout section-gap">
+    <section class="col-8 card">
+        <div class="card-head">
+            <div class="card-title-wrap"><span class="eyebrow">Downloader</span><h2 class="card-title">Download Audio</h2></div>
+            <span class="badge info dot">Auto Fallback</span>
+        </div>
+        <form method="POST" class="ytmp3-form">
+            <div class="field">
+                <label class="field-label" for="ytmp3Url">URL YouTube</label>
+                <input class="input" id="ytmp3Url" type="url" name="url" value="{{ youtube_url }}" placeholder="https://www.youtube.com/watch?v=..." required>
+            </div>
+            <div class="field">
+                <label class="field-label" for="ytmp3Mode">Mode provider</label>
+                <select class="input" id="ytmp3Mode" name="mode">
+                    <option value="normal" {% if selected_mode == 'normal' %}selected{% endif %}>Normal — Random + Fallback</option>
+                    <option value="lolhuman" {% if selected_mode == 'lolhuman' %}selected{% endif %}>LOLHuman saja</option>
+                    <option value="converso" {% if selected_mode == 'converso' %}selected{% endif %}>Converso saja</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <span class="spacer"></span>
+                <button class="btn btn--primary" type="submit">
+                    <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+                    Download MP3
+                </button>
+            </div>
+        </form>
+    </section>
+
+    <aside class="col-4 card tool-side-card">
+        <div class="card-head">
+            <div class="card-title-wrap"><span class="eyebrow">Provider</span><h2 class="card-title">Sistem Otomatis</h2></div>
+        </div>
+        <div class="provider-stack">
+            <div class="provider-row">
+                <div class="provider-dot">L</div>
+                <div><strong>LOLHuman</strong><span>{{ lolhuman_key_count }} API key terdeteksi</span></div>
+            </div>
+            <div class="provider-row">
+                <div class="provider-dot">C</div>
+                <div><strong>Converso</strong><span>Butuh package + FFmpeg di server</span></div>
+            </div>
+        </div>
+        <div class="tool-note">
+            <strong>Mode Normal</strong>
+            <p>Provider diacak setiap request. Jika provider pertama error, sistem otomatis berpindah ke provider lainnya.</p>
+        </div>
+    </aside>
+</section>
+{% endblock %}
