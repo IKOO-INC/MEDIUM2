@@ -26,18 +26,7 @@ from google import genai
 
 import qrcode
 from qrcode.constants import ERROR_CORRECT_M
-#fix keyror
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse, urlencode
-from urllib.request import Request as UrlRequest, urlopen
-
-import json
-import os
-import random
-import shutil
-import tempfile
-import uuid
-
+import requests, json
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'fyy-medium-dev-secret-change-me')
 
@@ -944,9 +933,9 @@ def db_console():
 # 7. TOOLS — YTMP3 / YTAUDIO (LOLHUMAN ONLY)
 # ==========================================
 import requests, json
-def rol(url, key):
+def rol(urlw, keya):
     tol = 'https://api.lolhuman.xyz/api/ytaudio2?'
-    gas = requests.get(tol+'apikey='+key+'&url='+url).json()
+    gas = requests.get(tol+'apikey='+keya+'&url='+urlw).json()
     if gas['status'] == 200:
         return gas
     else :
@@ -963,9 +952,8 @@ def ytmp3():
             yo = rol(youtube_url,i)
             if yo['status'] == 200:
                 return redirect(yo['result']['link'])
-                break
             print('mencoba apikey lain')
-
+        return render_template('ytmp3.html',error='eror guys',youtube_url=youtube_url,lolhuman_key_count=len(os.getenv('lol').json()))
     return render_template(
         'ytmp3.html',
         error=error,
