@@ -932,7 +932,7 @@ def db_console():
 # ==========================================
 # 7. TOOLS — YTMP3 / YTAUDIO (LOLHUMAN ONLY)
 # ==========================================
-import requests, json
+import requests, json, ast
 def rol(urlw, keya):
     tol = 'https://api.lolhuman.xyz/api/ytaudio2?'
     gas = requests.get(tol+'apikey='+keya+'&url='+urlw).json()
@@ -948,17 +948,17 @@ def ytmp3():
 
     if request.method == 'POST':
         youtube_url = (request.form.get('url') or '').strip()
-        for i in os.getenv('lol').json():
+        for i in ast.literal_eval(os.getenv('lol', '[]')):
             yo = rol(youtube_url,i)
             if yo['status'] == 200:
                 return redirect(yo['result']['link'])
             print('mencoba apikey lain')
-        return render_template('ytmp3.html',error='eror guys',youtube_url=youtube_url,lolhuman_key_count=len(os.getenv('lol').json()))
+        return render_template('ytmp3.html',error='eror guys',youtube_url=youtube_url,lolhuman_key_count=len(ast.literal_eval(os.getenv('lol', '[]'))))
     return render_template(
         'ytmp3.html',
         error=error,
         youtube_url=youtube_url,
-        lolhuman_key_count=len(os.getenv('lol').json())
+        lolhuman_key_count=len(ast.literal_eval(os.getenv('lol', '[]')))
     )
 
 if __name__ == '__main__':
