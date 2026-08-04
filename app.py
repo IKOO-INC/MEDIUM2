@@ -168,19 +168,24 @@ def index():
     incomes = list(db.finance.find({"type": "in"}))
     expenses = list(db.finance.find({"type": "out"}))
 
-    total_in = sum(item['amount'] for item in incomes)
-    total_out = sum(item['amount'] for item in expenses)
+    total_in = sum(item.get('amount', 0) for item in incomes)
+    total_out = sum(item.get('amount', 0) for item in expenses)
     balance = total_in - total_out
 
-    active_tasks = list(db.tasks.find({"status": "active"}).limit(5))
+    active_tasks = list(db.tasks.find({"status": "active"}).sort("date_created", -1).limit(5))
+    latest_announcements = list(
+        db.announcements.find().sort('created_at', -1).limit(5)
+    )
 
     return render_template(
         'index.html',
         balance=balance,
         total_in=total_in,
         total_out=total_out,
-        tasks=active_tasks
+        tasks=active_tasks,
+        announcements=latest_announcements
     )
+
 
 
 # ==========================================
