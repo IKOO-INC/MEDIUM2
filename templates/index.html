@@ -59,7 +59,7 @@
             <span class="eyebrow">Tools</span>
             <h2 class="section-title">Alat Cepat Tim</h2>
         </div>
-        <span class="section-caption">Alat alat khusus media</span>
+        <span class="section-caption">FYY AI, downloader, dan pengolah gambar</span>
     </div>
     <div class="tools-grid">
         <a class="tool-card" href="{{ url_for('fyy_ai') }}">
@@ -80,7 +80,29 @@
             <div class="tool-card-body">
                 <span class="badge success dot">YTMP3</span>
                 <h3>Download YouTube MP3</h3>
-                <p>Download music backsound cinematic di sini ya, tidak untuk download lagu ajeng!!</p>
+                <p>Download audio YouTube melalui LOLHuman dengan pergantian API key otomatis jika key gagal.</p>
+            </div>
+            <svg class="tool-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </a>
+        <a class="tool-card" href="{{ url_for('remove_bg') }}">
+            <div class="tool-icon tool-icon--image">
+                <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21M15 3v18"/></svg>
+            </div>
+            <div class="tool-card-body">
+                <span class="badge info dot">PicWish Sync</span>
+                <h3>Remove Background</h3>
+                <p>Hapus background gambar dan bandingkan hasil sebelum–sesudah menggunakan slider.</p>
+            </div>
+            <svg class="tool-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </a>
+        <a class="tool-card" href="{{ url_for('tiktok_downloader') }}">
+            <div class="tool-icon tool-icon--tiktok">
+                <svg viewBox="0 0 24 24"><path d="M15 4v10.5a4.5 4.5 0 1 1-4-4.47"/><path d="M15 4c1.2 2.7 3.1 4.2 6 4.5"/></svg>
+            </div>
+            <div class="tool-card-body">
+                <span class="badge danger dot">TikTok HD</span>
+                <h3>TikTok Downloader</h3>
+                <p>Unduh video TikTok HD tanpa API key dan kirim sebagai file setelah proses selesai.</p>
             </div>
             <svg class="tool-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
         </a>
