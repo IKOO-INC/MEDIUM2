@@ -18,7 +18,7 @@ import tempfile
 import uuid
 from pathlib import Path
 from datetime import datetime, timedelta
-
+import requests
 import cloudinary
 import cloudinary.uploader
 from cloudinary.exceptions import Error as CloudinaryError
@@ -959,6 +959,294 @@ def ytmp3():
         error=error,
         youtube_url=youtube_url,
         lolhuman_key_count=len(ast.literal_eval(os.getenv('lol', '[]')))
+    )
+
+
+# ==========================================
+# 8. TOOLS — REMOVE BACKGROUND (PICWISH SYNC)
+# ==========================================
+class PicWishProviderError(RuntimeError):
+    """Kesalahan terkontrol dari PicWish Background Removal API."""
+
+
+def get_picwish_api_keys():
+    """Ambil API key PicWish dari env `PICH` secara berurutan."""
+    return _parse_env_list(os.getenv('PICH') or os.getenv('pich'))
+
+
+def _picwish_error_message(payload, fallback='PicWish gagal memproses gambar.'):
+    if isinstance(payload, dict):
+        message = payload.get('message') or payload.get('msg') or payload.get('error')
+        if isinstance(message, dict):
+            message = message.get('message') or message.get('detail')
+        if message:
+            return str(message)[:300]
+    return fallback
+
+
+def remove_background_with_picwish(file_storage, foreground_type='', crop=False):
+    """Kirim gambar ke PicWish sync API dan berhenti pada API key pertama yang berhasil."""
+    api_keys = get_picwish_api_keys()
+    if not api_keys:
+        raise PicWishProviderError('Environment `PICH` belum berisi API key PicWish.')
+
+    filename = secure_filename(file_storage.filename or 'image.png') or 'image.png'
+    content_type = (file_storage.mimetype or 'application/octet-stream').lower()
+    allowed_mimetypes = {
+        'image/jpeg', 'image/png', 'image/webp', 'image/bmp',
+        'image/tiff', 'image/x-tiff', 'image/jfif'
+    }
+    if not content_type.startswith('image/'):
+        raise PicWishProviderError('File yang dipilih harus berupa gambar.')
+    if content_type not in allowed_mimetypes and not filename.lower().endswith(
+        ('.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tif', '.tiff', '.jfif')
+    ):
+        raise PicWishProviderError('Format gambar belum didukung oleh Remove BG.')
+
+    image_bytes = file_storage.read()
+    if not image_bytes:
+        raise PicWishProviderError('File gambar kosong atau tidak dapat dibaca.')
+    if len(image_bytes) > 20 * 1024 * 1024:
+        raise PicWishProviderError('Ukuran gambar maksimal 20 MB.')
+
+    foreground_type = (foreground_type or '').strip().lower()
+    if foreground_type not in {'', 'person', 'object', 'stamp'}:
+        foreground_type = ''
+
+    endpoint = (
+        os.getenv('PICWISH_REMOVE_BG_URL')
+        or 'https://techhk.aoscdn.com/api/tasks/visual/segmentation'
+    ).strip()
+    errors = []
+
+    for index, api_key in enumerate(api_keys, start=1):
+        try:
+            form_data = {
+                'sync': '1',
+                'return_type': '1',
+                'output_type': '2',
+                'crop': '1' if crop else '0',
+                'format': 'png'
+            }
+            if foreground_type:
+                form_data['type'] = foreground_type
+
+            response = requests.post(
+                endpoint,
+                headers={'X-API-KEY': api_key},
+                data=form_data,
+                files={'image_file': (filename, BytesIO(image_bytes), content_type)},
+                timeout=(15, 180)
+            )
+
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = {}
+
+            api_status = payload.get('status', response.status_code) if isinstance(payload, dict) else response.status_code
+            data = payload.get('data') if isinstance(payload, dict) else None
+            data = data if isinstance(data, dict) else {}
+            state = data.get('state')
+            result_url = data.get('image')
+
+            if (
+                response.ok
+                and str(api_status) == '200'
+                and result_url
+                and (state is None or str(state) == '1')
+            ):
+                result_url = str(result_url).strip()
+                parsed = urlparse(result_url)
+                if parsed.scheme != 'https' or not parsed.hostname:
+                    raise PicWishProviderError('PicWish mengembalikan URL hasil yang tidak valid.')
+                return {
+                    'result_url': result_url,
+                    'key_index': index,
+                    'filename': f"remove-bg-{Path(filename).stem}.png"
+                }
+
+            message = _picwish_error_message(
+                payload,
+                fallback=f'HTTP {response.status_code}'
+            )
+            normalized = message.lower()
+            key_related = (
+                response.status_code in {401, 403, 429, 500, 502, 503, 504}
+                or str(api_status) in {'401', '403', '429', '500', '502', '503', '504'}
+                or any(word in normalized for word in (
+                    'api key', 'apikey', 'unauthorized', 'credit', 'quota',
+                    'balance', 'frequency', 'rate limit', 'qps'
+                ))
+            )
+
+            if key_related:
+                errors.append(f'key #{index}: {message[:120]}')
+                app.logger.warning('PicWish key #%s gagal: %s', index, message)
+                continue
+
+            # Kesalahan gambar/parameter tidak akan dicoba ulang memakai key lain,
+            # agar kredit key berikutnya tidak ikut terpakai untuk input yang sama.
+            raise PicWishProviderError(message)
+
+        except PicWishProviderError:
+            raise
+        except requests.RequestException as exc:
+            errors.append(f'key #{index}: koneksi gagal')
+            app.logger.warning('PicWish key #%s request gagal: %s', index, exc)
+        except Exception as exc:
+            errors.append(f'key #{index}: {type(exc).__name__}')
+            app.logger.exception('PicWish key #%s gagal', index)
+
+    detail = ', '.join(errors) if errors else 'tidak ada key yang berhasil'
+    raise PicWishProviderError(f'Semua API key PicWish gagal digunakan ({detail}).')
+
+
+@app.route('/remove-bg', methods=['GET', 'POST'])
+def remove_bg():
+    if request.method == 'GET':
+        return render_template(
+            'remove_bg.html',
+            picwish_key_count=len(get_picwish_api_keys())
+        )
+
+    file = request.files.get('image')
+    if not file or not file.filename:
+        return jsonify({'ok': False, 'error': 'Silakan pilih gambar terlebih dahulu.'}), 400
+
+    try:
+        result = remove_background_with_picwish(
+            file,
+            foreground_type=request.form.get('type'),
+            crop=request.form.get('crop') == '1'
+        )
+    except PicWishProviderError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 502
+    except Exception:
+        app.logger.exception('Remove BG PicWish gagal')
+        return jsonify({'ok': False, 'error': 'Remove BG gagal diproses oleh server.'}), 500
+
+    response = jsonify({
+        'ok': True,
+        'result_url': result['result_url'],
+        'download_name': result['filename'],
+        'key_index': result['key_index'],
+        'expires_in': 3600
+    })
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+# ==========================================
+# 9. TOOLS — TIKTOK DOWNLOADER HD
+# ==========================================
+class TikTokDownloadError(RuntimeError):
+    """Kesalahan terkontrol dari tiktok-downloader-hd."""
+
+
+def is_tiktok_url(value):
+    try:
+        parsed = urlparse((value or '').strip())
+    except Exception:
+        return False
+    if parsed.scheme not in {'http', 'https'}:
+        return False
+    hostname = (parsed.hostname or '').lower()
+    return hostname == 'tiktok.com' or hostname.endswith('.tiktok.com')
+
+
+def download_tiktok_hd(video_url):
+    """Unduh video TikTok penuh ke folder temp sebelum dikirim dengan send_file."""
+    try:
+        from tiktok_downloader import TikTokDownloader
+    except ImportError as exc:
+        raise TikTokDownloadError(
+            'Package tiktok-downloader-hd belum terpasang. Jalankan pip install -r requirements.txt.'
+        ) from exc
+
+    temp_dir = tempfile.mkdtemp(prefix='fyy-tiktok-')
+    filename_prefix = f'tiktok-{uuid.uuid4().hex[:12]}'
+    output_path = os.path.join(temp_dir, f'{filename_prefix}.mp4')
+    downloader = None
+
+    cookies_path = (os.getenv('TIKTOK_COOKIES_PATH') or '').strip() or None
+    if cookies_path and not os.path.isfile(cookies_path):
+        cookies_path = None
+
+    try:
+        downloader = TikTokDownloader(
+            download_dir=temp_dir,
+            cookies_path=cookies_path,
+            headless=True
+        )
+        success = downloader.download(
+            video_url,
+            filename_prefix=filename_prefix,
+            retries=2
+        )
+        if not success or not os.path.isfile(output_path) or os.path.getsize(output_path) <= 0:
+            raise TikTokDownloadError('TikTok gagal diunduh. Periksa link lalu coba kembali.')
+        return {
+            'output_path': output_path,
+            'temp_dir': temp_dir,
+            'filename': f'{filename_prefix}.mp4'
+        }
+    except TikTokDownloadError:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
+    except Exception as exc:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        error_text = str(exc).lower()
+        if 'chrome' in error_text or 'driver' in error_text or 'browser' in error_text:
+            raise TikTokDownloadError(
+                'Google Chrome/ChromeDriver tidak tersedia pada server. '
+                'Package tiktok-downloader-hd membutuhkannya untuk menjalankan scraper.'
+            ) from exc
+        raise TikTokDownloadError(f'TikTok downloader gagal: {type(exc).__name__}.') from exc
+    finally:
+        if downloader is not None:
+            try:
+                downloader.close()
+            except Exception:
+                pass
+
+
+def _send_tiktok_file(result):
+    response = send_file(
+        result['output_path'],
+        mimetype='video/mp4',
+        as_attachment=True,
+        download_name=result['filename'],
+        max_age=0
+    )
+
+    @response.call_on_close
+    def cleanup_tiktok_file():
+        shutil.rmtree(result['temp_dir'], ignore_errors=True)
+
+    return response
+
+
+@app.route('/tiktok-downloader', methods=['GET', 'POST'])
+def tiktok_downloader():
+    error = ''
+    tiktok_url = ''
+
+    if request.method == 'POST':
+        tiktok_url = (request.form.get('url') or '').strip()
+        if not is_tiktok_url(tiktok_url):
+            error = 'Masukkan URL video TikTok yang valid.'
+        else:
+            try:
+                return _send_tiktok_file(download_tiktok_hd(tiktok_url))
+            except TikTokDownloadError as exc:
+                app.logger.warning('TikTok downloader gagal: %s', exc)
+                error = str(exc)
+
+    return render_template(
+        'tiktok_downloader.html',
+        error=error,
+        tiktok_url=tiktok_url
     )
 
 if __name__ == '__main__':
