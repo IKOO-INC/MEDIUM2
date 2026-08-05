@@ -2,107 +2,108 @@
 
 {% block content %}
 
-<div class="container-fluid py-4">
+<div class="container-fluid remove-bg-page">
 
-    <div class="row justify-content-center">
+    <div class="remove-bg-card">
 
-        <div class="col-lg-7 col-xl-6">
+        <div class="remove-bg-card-header">
 
-            <div class="card border-0 shadow-sm">
+            <h3>
+                Remove Background
+            </h3>
 
-                <div class="card-body p-4">
+            <p>
+                Upload gambar dan hasilnya akan langsung
+                didownload setelah proses selesai.
+            </p>
 
-                    <div class="mb-4">
-                        <h3 class="mb-1">
-                            Remove Background
-                        </h3>
+        </div>
 
-                        <p class="text-muted mb-0">
-                            Upload gambar dan hasilnya akan
-                            langsung di-download setelah proses selesai.
-                        </p>
-                    </div>
 
-                    {% if error %}
+        <div class="remove-bg-card-body">
 
-                    <div class="alert alert-danger">
-                        {{ error }}
-                    </div>
+            {% if error %}
 
-                    {% endif %}
+            <div class="remove-bg-alert">
+                {{ error }}
+            </div>
 
-                    <form
-                        action="{{ url_for('remove_bg') }}"
-                        method="POST"
-                        enctype="multipart/form-data"
+            {% endif %}
+
+
+            <form
+                action="{{ url_for('remove_bg') }}"
+                method="POST"
+                enctype="multipart/form-data"
+            >
+
+                <div class="remove-bg-form-group">
+
+                    <label for="removeBgImage">
+                        Pilih Gambar
+                    </label>
+
+                    <input
+                        id="removeBgImage"
+                        type="file"
+                        name="image"
+                        class="remove-bg-file-input"
+                        accept="image/*"
+                        required
                     >
 
-                        <div class="mb-3">
-
-                            <label class="form-label">
-                                Pilih Gambar
-                            </label>
-
-                            <input
-                                type="file"
-                                name="image"
-                                class="form-control"
-                                accept="image/*"
-                                required
-                            >
-
-                            <small class="text-muted">
-                                Maksimal 20 MB.
-                            </small>
-
-                        </div>
-
-
-                        <div class="mb-4">
-
-                            <label class="form-label">
-                                Jenis Subjek
-                            </label>
-
-                            <select
-                                name="foreground_type"
-                                class="form-select"
-                            >
-
-                                <option value="">
-                                    Otomatis
-                                </option>
-
-                                <option value="person">
-                                    Orang
-                                </option>
-
-                                <option value="object">
-                                    Objek
-                                </option>
-
-                                <option value="stamp">
-                                    Stempel
-                                </option>
-
-                            </select>
-
-                        </div>
-
-
-                        <button
-                            type="submit"
-                            class="btn btn-primary w-100"
-                        >
-                            <i class="ti-cut me-1"></i>
-                            Remove Background
-                        </button>
-
-                    </form>
+                    <div class="remove-bg-info">
+                        Format gambar yang didukung:
+                        JPG, JPEG, PNG, WEBP.
+                        Maksimal 20 MB.
+                    </div>
 
                 </div>
 
-            </div>
+
+                <div class="remove-bg-form-group">
+
+                    <label for="foregroundType">
+                        Jenis Subjek
+                    </label>
+
+                    <select
+                        id="foregroundType"
+                        name="foreground_type"
+                        class="remove-bg-select"
+                    >
+
+                        <option value="">
+                            Otomatis
+                        </option>
+
+                        <option value="person">
+                            Orang
+                        </option>
+
+                        <option value="object">
+                            Objek
+                        </option>
+
+                        <option value="stamp">
+                            Stempel
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <button
+                    type="submit"
+                    class="remove-bg-submit"
+                >
+
+                    Remove Background
+
+                </button>
+
+            </form>
 
         </div>
 
