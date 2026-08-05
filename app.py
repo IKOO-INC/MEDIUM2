@@ -970,8 +970,49 @@ class PicWishProviderError(RuntimeError):
 
 
 def get_picwish_api_keys():
-    """Ambil API key PicWish dari env `PICH` secara berurutan."""
-    return _parse_env_list(os.getenv('PICH') or os.getenv('pich'))
+    """Membaca daftar API key PicWish dari environment PICH.
+
+    Format yang didukung:
+    PICH=["KEY_1","KEY_2","KEY_3"]
+
+    Bisa juga:
+    PICH=KEY_1,KEY_2,KEY_3
+    """
+    raw_value = (os.getenv('PICH') or os.getenv('pich') or '').strip()
+
+    if not raw_value:
+        return []
+
+    api_keys = []
+
+    # Coba membaca format JSON array.
+    try:
+        parsed_value = json.loads(raw_value)
+
+        if isinstance(parsed_value, list):
+            values = parsed_value
+        elif isinstance(parsed_value, str):
+            values = [parsed_value]
+        else:
+            values = []
+
+    except (json.JSONDecodeError, TypeError):
+        # Fallback untuk format koma atau baris baru.
+        normalized_value = raw_value.replace('\r\n', '\n').replace('\r', '\n')
+
+        if '\n' in normalized_value:
+            values = normalized_value.split('\n')
+        else:
+            values = normalized_value.split(',')
+
+    # Bersihkan key dan hindari key duplikat.
+    for value in values:
+        clean_key = str(value).strip().strip('"').strip("'")
+
+        if clean_key and clean_key not in api_keys:
+            api_keys.append(clean_key)
+
+    return api_keys
 
 
 def _picwish_error_message(payload, fallback='PicWish gagal memproses gambar.'):
