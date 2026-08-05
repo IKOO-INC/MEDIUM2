@@ -87,6 +87,16 @@
                 <span>YTMP3</span>
                 <span class="nav-badge">TOOL</span>
             </a>
+            <a class="nav-link {% if request.endpoint == 'remove_bg' %}is-active{% endif %}" href="{{ url_for('remove_bg') }}">
+                <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21M15 3v18"/></svg>
+                <span>Remove BG</span>
+                <span class="nav-badge">AI</span>
+            </a>
+            <a class="nav-link {% if request.endpoint == 'tiktok_downloader' %}is-active{% endif %}" href="{{ url_for('tiktok_downloader') }}">
+                <svg viewBox="0 0 24 24"><path d="M15 4v10.5a4.5 4.5 0 1 1-4-4.47"/><path d="M15 4c1.2 2.7 3.1 4.2 6 4.5"/></svg>
+                <span>TikTok Downloader</span>
+                <span class="nav-badge">HD</span>
+            </a>
         </nav>
 
         <nav class="nav-section" aria-label="Menu sistem">
