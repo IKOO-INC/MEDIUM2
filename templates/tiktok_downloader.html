@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block title %}TikTok Downloader{% endblock %}
+{% block breadcrumb %}Tools / TikTok Downloader{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-text">
+        <span class="eyebrow">Tools</span>
+        <h1 class="hero-title">TikTok <span class="accent">Downloader</span></h1>
+        <p class="hero-sub">Masukkan link video TikTok. Server memproses dan mengunduh file terlebih dahulu, kemudian mengirimnya sebagai attachment.</p>
+    </div>
+</section>
+
+{% if error %}
+<div class="alert danger section-gap">{{ error }}</div>
+{% endif %}
+
+<section class="grid ytmp3-layout section-gap">
+    <section class="col-8 card">
+        <div class="card-head">
+            <div class="card-title-wrap">
+                <span class="eyebrow">Downloader</span>
+                <h2 class="card-title">Download Video TikTok HD</h2>
+            </div>
+            <span class="badge danger dot">MP4</span>
+        </div>
+        <form method="POST" class="ytmp3-form" id="tiktokDownloadForm">
+            <div class="field">
+                <label class="field-label" for="tiktokUrl">URL Video TikTok</label>
+                <input class="input" id="tiktokUrl" type="url" name="url" value="{{ tiktok_url }}" placeholder="https://www.tiktok.com/@username/video/..." required>
+            </div>
+            <div class="form-actions">
+                <span class="spacer"></span>
+                <button class="btn btn--primary" type="submit" id="tiktokSubmit">
+                    <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+                    Download TikTok
+                </button>
+            </div>
+        </form>
+    </section>
+
+    <aside class="col-4 card tool-side-card">
+        <div class="card-head">
+            <div class="card-title-wrap"><span class="eyebrow">Engine</span><h2 class="card-title">tiktok-downloader-hd</h2></div>
+        </div>
+        <div class="provider-stack">
+            <div class="provider-row">
+                <div class="provider-dot">T</div>
+                <div><strong>Scraper SnapTik</strong><span>Tanpa API key · output video MP4 HD</span></div>
+            </div>
+        </div>
+        <div class="tool-note">
+            <strong>Catatan format</strong>
+            <p>Package ini hanya menghasilkan video <code>MP4</code>, bukan MP3. Mengubahnya menjadi MP3 memerlukan proses konversi audio terpisah.</p>
+        </div>
+        <div class="tool-note">
+            <strong>Kebutuhan server</strong>
+            <p>Package menjalankan Selenium dan membutuhkan Google Chrome/ChromeDriver pada server. Jika Chrome tidak tersedia, halaman akan menampilkan pesan error.</p>
+        </div>
+    </aside>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(() => {
+    const form = document.getElementById('tiktokDownloadForm');
+    const button = document.getElementById('tiktokSubmit');
+    form.addEventListener('submit', () => {
+        button.disabled = true;
+        button.classList.add('is-loading');
+        button.lastChild.textContent = ' Memproses...';
+        window.setTimeout(() => {
+            button.disabled = false;
+            button.classList.remove('is-loading');
+        }, 90000);
+    });
+})();
+</script>
+{% endblock %}

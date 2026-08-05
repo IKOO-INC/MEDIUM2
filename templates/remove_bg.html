@@ -1,0 +1,184 @@
+{% extends 'base.html' %}
+{% block title %}Remove Background{% endblock %}
+{% block breadcrumb %}Tools / Remove BG{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-text">
+        <span class="eyebrow">Tools · PicWish Sync API</span>
+        <h1 class="hero-title">Remove <span class="accent">Background</span></h1>
+        <p class="hero-sub">Upload gambar, hapus background secara otomatis, lalu geser pembanding untuk melihat kondisi sebelum dan sesudah.</p>
+    </div>
+</section>
+
+<section class="grid remove-bg-layout section-gap">
+    <section class="col-5 card">
+        <div class="card-head">
+            <div class="card-title-wrap">
+                <span class="eyebrow">Input</span>
+                <h2 class="card-title">Pilih Gambar</h2>
+            </div>
+            <span class="badge info dot">{{ picwish_key_count }} key</span>
+        </div>
+
+        <form id="removeBgForm" class="remove-bg-form" method="POST" enctype="multipart/form-data">
+            <label class="remove-bg-drop" id="removeBgDrop" for="removeBgFile">
+                <input id="removeBgFile" name="image" type="file" accept="image/png,image/jpeg,image/webp,image/bmp,image/tiff,.jfif" required>
+                <span class="remove-bg-drop-icon">
+                    <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>
+                </span>
+                <strong id="removeBgFileName">Klik untuk memilih gambar</strong>
+                <span>JPG, PNG, WEBP, BMP, TIFF · maksimal 20 MB</span>
+            </label>
+
+            <div class="field">
+                <label class="field-label" for="removeBgType">Jenis objek</label>
+                <select class="select" id="removeBgType" name="type">
+                    <option value="">Deteksi otomatis</option>
+                    <option value="person">Orang / portrait</option>
+                    <option value="object">Produk / objek</option>
+                    <option value="stamp">Stempel</option>
+                </select>
+            </div>
+
+            <label class="check-row">
+                <input type="checkbox" name="crop" value="1">
+                <span>Potong kanvas mengikuti tepi objek</span>
+            </label>
+
+            <div class="remove-bg-status" id="removeBgStatus" hidden></div>
+            <button class="btn btn--primary btn--full" id="removeBgSubmit" type="submit">
+                <svg viewBox="0 0 24 24"><path d="M4 20h16M12 4v11M7 10l5 5 5-5"/></svg>
+                Proses Remove BG
+            </button>
+        </form>
+
+        <div class="tool-note">
+            <strong>Urutan API key</strong>
+            <p>Sistem mencoba <code>PICH[0]</code> lebih dulu. Jika berhasil, key berikutnya tidak dipakai. Jika key tidak valid, kuota habis, atau terkena limit, sistem lanjut ke key selanjutnya.</p>
+        </div>
+    </section>
+
+    <section class="col-7 card remove-bg-result-card">
+        <div class="card-head">
+            <div class="card-title-wrap">
+                <span class="eyebrow">Preview</span>
+                <h2 class="card-title">Sebelum & Sesudah</h2>
+            </div>
+            <span class="badge success dot" id="removeBgKeyBadge" hidden></span>
+        </div>
+
+        <div class="remove-bg-empty" id="removeBgEmpty">
+            <div class="remove-bg-empty-icon">
+                <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
+            </div>
+            <strong>Preview belum tersedia</strong>
+            <span>Pilih gambar dan tekan tombol proses untuk menampilkan perbandingan.</span>
+        </div>
+
+        <div class="remove-bg-result" id="removeBgResult" hidden>
+            <div class="image-comparison" id="imageComparison" style="--compare-position: 50%;">
+                <img class="comparison-image comparison-image--before" id="removeBgBefore" alt="Gambar sebelum background dihapus">
+                <img class="comparison-image comparison-image--after" id="removeBgAfter" alt="Gambar setelah background dihapus">
+                <div class="comparison-divider" aria-hidden="true"><span>↔</span></div>
+                <input class="comparison-range" id="comparisonRange" type="range" min="0" max="100" value="50" aria-label="Geser perbandingan sebelum dan sesudah">
+                <span class="comparison-label comparison-label--before">Sebelum</span>
+                <span class="comparison-label comparison-label--after">Sesudah</span>
+            </div>
+            <div class="remove-bg-result-actions">
+                <span class="remove-bg-expiry">URL hasil PicWish berlaku sekitar 1 jam.</span>
+                <a class="btn btn--primary" id="removeBgDownload" href="#" target="_blank" rel="noopener">
+                    <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+                    Buka / Download PNG
+                </a>
+            </div>
+        </div>
+    </section>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(() => {
+    const form = document.getElementById('removeBgForm');
+    const fileInput = document.getElementById('removeBgFile');
+    const fileName = document.getElementById('removeBgFileName');
+    const submit = document.getElementById('removeBgSubmit');
+    const status = document.getElementById('removeBgStatus');
+    const empty = document.getElementById('removeBgEmpty');
+    const result = document.getElementById('removeBgResult');
+    const comparison = document.getElementById('imageComparison');
+    const range = document.getElementById('comparisonRange');
+    const before = document.getElementById('removeBgBefore');
+    const after = document.getElementById('removeBgAfter');
+    const download = document.getElementById('removeBgDownload');
+    const keyBadge = document.getElementById('removeBgKeyBadge');
+    let localPreviewUrl = null;
+
+    const setStatus = (message, kind = 'info') => {
+        status.textContent = message;
+        status.className = `remove-bg-status is-${kind}`;
+        status.hidden = !message;
+    };
+
+    fileInput.addEventListener('change', () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) return;
+        fileName.textContent = file.name;
+        if (localPreviewUrl) URL.revokeObjectURL(localPreviewUrl);
+        localPreviewUrl = URL.createObjectURL(file);
+        before.src = localPreviewUrl;
+        result.hidden = true;
+        empty.hidden = false;
+        setStatus('');
+    });
+
+    range.addEventListener('input', () => {
+        comparison.style.setProperty('--compare-position', `${range.value}%`);
+    });
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) {
+            setStatus('Silakan pilih gambar terlebih dahulu.', 'error');
+            return;
+        }
+
+        submit.disabled = true;
+        submit.classList.add('is-loading');
+        setStatus('Gambar sedang diproses oleh PicWish...', 'loading');
+
+        try {
+            const response = await fetch(form.action || window.location.href, {
+                method: 'POST',
+                body: new FormData(form),
+                headers: {'Accept': 'application/json'}
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || !payload.ok) {
+                throw new Error(payload.error || 'Remove BG gagal diproses.');
+            }
+
+            after.onload = () => {
+                empty.hidden = true;
+                result.hidden = false;
+                range.value = 50;
+                comparison.style.setProperty('--compare-position', '50%');
+            };
+            after.src = payload.result_url;
+            download.href = payload.result_url;
+            download.setAttribute('download', payload.download_name || 'remove-bg.png');
+            keyBadge.textContent = `Key #${payload.key_index} berhasil`;
+            keyBadge.hidden = false;
+            setStatus('Background berhasil dihapus.', 'success');
+        } catch (error) {
+            setStatus(error.message || 'Terjadi kesalahan saat memproses gambar.', 'error');
+        } finally {
+            submit.disabled = false;
+            submit.classList.remove('is-loading');
+        }
+    });
+})();
+</script>
+{% endblock %}
