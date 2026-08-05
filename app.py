@@ -970,33 +970,63 @@ class PicWishProviderError(RuntimeError):
 
 
 def get_picwish_api_keys():
-    """Ambil API key PicWish dari env `PICH` secara berurutan.
-
-    Parser dibuat mandiri agar fitur Remove BG tidak bergantung pada helper
-    milik YTMP3. Mendukung JSON array, CSV, dan daftar multiline.
     """
-    raw = (os.getenv('PICH') or os.getenv('pich') or '').strip()
-    if not raw:
+    Membaca API key PicWish dari environment variable PICH.
+
+    Format yang didukung:
+    PICH=["KEY_1","KEY_2","KEY_3","KEY_4","KEY_5"]
+
+    Atau:
+    PICH=KEY_1,KEY_2,KEY_3
+
+    Urutan API key dipertahankan.
+    """
+
+    raw_value = (
+        os.getenv('PICH')
+        or os.getenv('pich')
+        or ''
+    ).strip()
+
+    if not raw_value:
         return []
 
+    api_keys = []
+
+    # Format JSON array
     try:
-        parsed = json.loads(raw)
+        parsed = json.loads(raw_value)
+
         if isinstance(parsed, list):
-            return list(dict.fromkeys(
-                str(item).strip()
-                for item in parsed
-                if str(item).strip()
-            ))
+            values = parsed
+
+        elif isinstance(parsed, str):
+            values = [parsed]
+
+        else:
+            values = []
+
     except (json.JSONDecodeError, TypeError):
-        pass
+        # Format CSV atau newline
+        normalized = (
+            raw_value
+            .replace('\r\n', '\n')
+            .replace('\r', '\n')
+        )
 
-    normalized = raw.replace('\r\n', '\n').replace('\r', '\n').replace('\n', ',')
-    return list(dict.fromkeys(
-        item.strip()
-        for item in normalized.split(',')
-        if item.strip()
-    ))
+        if '\n' in normalized:
+            values = normalized.split('\n')
+        else:
+            values = normalized.split(',')
 
+    # Bersihkan API key tanpa mengubah urutan
+    for value in values:
+        key = str(value).strip().strip('"').strip("'")
+
+        if key and key not in api_keys:
+            api_keys.append(key)
+
+    return api_keys
 
 def _picwish_error_message(payload, fallback='PicWish gagal memproses gambar.'):
     if isinstance(payload, dict):
