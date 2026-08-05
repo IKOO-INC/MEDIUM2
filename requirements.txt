@@ -5,3 +5,5 @@ Werkzeug==3.0.1
 qrcode[pil]==8.2
 cloudinary
 google-genai>=1.0.0
+requests>=2.31.0
+tiktok-downloader-hd==0.0a3
