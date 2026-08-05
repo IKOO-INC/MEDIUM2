@@ -1,114 +1,114 @@
-{% extends "base.html" %}
+{% extends 'base.html' %}
+{% block title %}Remove Background{% endblock %}
+{% block breadcrumb %}Tools / Remove BG{% endblock %}
 
 {% block content %}
+<section class="hero">
+    <div class="hero-text">
+        <span class="eyebrow">Tools</span>
+        <h1 class="hero-title">Remove <span class="accent">Background</span></h1>
+        <p class="hero-sub">Hapus background gambar menggunakan PicWish. Setelah proses selesai, hasil PNG langsung dikirim untuk di-download.</p>
+    </div>
+</section>
 
-<div class="container-fluid remove-bg-page">
+{% if error %}
+<div class="alert danger section-gap">{{ error }}</div>
+{% endif %}
 
-    <div class="remove-bg-card">
-
-        <div class="remove-bg-card-header">
-
-            <h3>
-                Remove Background
-            </h3>
-
-            <p>
-                Upload gambar dan hasilnya akan langsung
-                didownload setelah proses selesai.
-            </p>
-
+<section class="grid remove-bg-layout section-gap">
+    <section class="col-8 card">
+        <div class="card-head">
+            <div class="card-title-wrap">
+                <span class="eyebrow">Background Remover</span>
+                <h2 class="card-title">Remove Background</h2>
+            </div>
+            <span class="badge info dot">PicWish</span>
         </div>
 
+        <form method="POST" enctype="multipart/form-data" class="remove-bg-form">
+            <label class="remove-bg-drop" for="removeBgFile">
+                <input
+                    id="removeBgFile"
+                    name="image"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/bmp,image/tiff,image/jfif,.jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.jfif"
+                    required
+                >
+                <span class="remove-bg-drop-icon">
+                    <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>
+                </span>
+                <strong id="removeBgFileName">Klik untuk memilih gambar</strong>
+                <span>JPG, PNG, WEBP, BMP, TIFF · maksimal 20 MB</span>
+            </label>
 
-        <div class="remove-bg-card-body">
-
-            {% if error %}
-
-            <div class="remove-bg-alert">
-                {{ error }}
+            <div class="field">
+                <label class="field-label" for="removeBgType">Jenis Subjek</label>
+                <select class="select" id="removeBgType" name="type">
+                    <option value="">Deteksi otomatis</option>
+                    <option value="person">Orang / portrait</option>
+                    <option value="object">Produk / objek</option>
+                    <option value="stamp">Stempel</option>
+                </select>
             </div>
 
-            {% endif %}
+            <label class="check-row">
+                <input type="checkbox" name="crop" value="1">
+                <span>Potong kanvas mengikuti tepi objek</span>
+            </label>
 
-
-            <form
-                action="{{ url_for('remove_bg') }}"
-                method="POST"
-                enctype="multipart/form-data"
-            >
-
-                <div class="remove-bg-form-group">
-
-                    <label for="removeBgImage">
-                        Pilih Gambar
-                    </label>
-
-                    <input
-                        id="removeBgImage"
-                        type="file"
-                        name="image"
-                        class="remove-bg-file-input"
-                        accept="image/*"
-                        required
-                    >
-
-                    <div class="remove-bg-info">
-                        Format gambar yang didukung:
-                        JPG, JPEG, PNG, WEBP.
-                        Maksimal 20 MB.
-                    </div>
-
-                </div>
-
-
-                <div class="remove-bg-form-group">
-
-                    <label for="foregroundType">
-                        Jenis Subjek
-                    </label>
-
-                    <select
-                        id="foregroundType"
-                        name="foreground_type"
-                        class="remove-bg-select"
-                    >
-
-                        <option value="">
-                            Otomatis
-                        </option>
-
-                        <option value="person">
-                            Orang
-                        </option>
-
-                        <option value="object">
-                            Objek
-                        </option>
-
-                        <option value="stamp">
-                            Stempel
-                        </option>
-
-                    </select>
-
-                </div>
-
-
-                <button
-                    type="submit"
-                    class="remove-bg-submit"
-                >
-
+            <div class="form-actions">
+                <span class="spacer"></span>
+                <button class="btn btn--primary" type="submit">
+                    <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
                     Remove Background
-
                 </button>
+            </div>
+        </form>
+    </section>
 
-            </form>
-
+    <aside class="col-4 card tool-side-card">
+        <div class="card-head">
+            <div class="card-title-wrap">
+                <span class="eyebrow">Provider</span>
+                <h2 class="card-title">PicWish</h2>
+            </div>
+            <span class="badge success dot">{{ picwish_key_count }} key</span>
         </div>
 
-    </div>
+        <div class="provider-stack">
+            <div class="provider-row">
+                <div class="provider-dot">P</div>
+                <div>
+                    <strong>PicWish Sync</strong>
+                    <span>Background removal · output PNG</span>
+                </div>
+            </div>
+        </div>
 
-</div>
+        <div class="tool-note">
+            <strong>Urutan API key</strong>
+            <p>Sistem mencoba <code>PICH[0]</code> terlebih dahulu. Jika key tersebut gagal karena kredensial, kuota, atau limit, sistem beralih ke key berikutnya sampai ada yang berhasil.</p>
+        </div>
 
+        <div class="tool-note">
+            <strong>Download langsung</strong>
+            <p>Tidak ada preview atau penyimpanan hasil. Setelah PicWish selesai, server mengambil hasil PNG dan langsung mengirimkannya sebagai file download.</p>
+        </div>
+    </aside>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(() => {
+    const fileInput = document.getElementById('removeBgFile');
+    const fileName = document.getElementById('removeBgFileName');
+    if (!fileInput || !fileName) return;
+
+    fileInput.addEventListener('change', () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (file) fileName.textContent = file.name;
+    });
+})();
+</script>
 {% endblock %}
