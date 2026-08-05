@@ -965,19 +965,21 @@ def ytmp3():
 # ==========================================
 # 8. TOOLS — REMOVE BACKGROUND (PICWISH SYNC)
 # ==========================================
-class PicWishProviderError(RuntimeError):
-    """Kesalahan terkontrol dari PicWish Background Removal API."""
-
+# ==========================================
+# REMOVE BACKGROUND — PICWISH SYNC API
+# ==========================================
 
 def get_picwish_api_keys():
-    """Membaca daftar API key PicWish dari environment PICH.
+    """
+    Membaca API key PicWish dari environment PICH.
 
-    Format yang didukung:
-    PICH=["KEY_1","KEY_2","KEY_3"]
+    Format utama:
+    PICH=["KEY_1","KEY_2","KEY_3","KEY_4","KEY_5"]
 
-    Bisa juga:
+    Juga mendukung:
     PICH=KEY_1,KEY_2,KEY_3
     """
+
     raw_value = (os.getenv('PICH') or os.getenv('pich') or '').strip()
 
     if not raw_value:
@@ -985,7 +987,7 @@ def get_picwish_api_keys():
 
     api_keys = []
 
-    # Coba membaca format JSON array.
+    # Format JSON array
     try:
         parsed_value = json.loads(raw_value)
 
@@ -997,15 +999,18 @@ def get_picwish_api_keys():
             values = []
 
     except (json.JSONDecodeError, TypeError):
-        # Fallback untuk format koma atau baris baru.
-        normalized_value = raw_value.replace('\r\n', '\n').replace('\r', '\n')
+        # Format CSV atau baris baru
+        normalized_value = (
+            raw_value
+            .replace('\r\n', '\n')
+            .replace('\r', '\n')
+        )
 
         if '\n' in normalized_value:
             values = normalized_value.split('\n')
         else:
             values = normalized_value.split(',')
 
-    # Bersihkan key dan hindari key duplikat.
     for value in values:
         clean_key = str(value).strip().strip('"').strip("'")
 
@@ -1015,169 +1020,362 @@ def get_picwish_api_keys():
     return api_keys
 
 
-def _picwish_error_message(payload, fallback='PicWish gagal memproses gambar.'):
-    if isinstance(payload, dict):
-        message = payload.get('message') or payload.get('msg') or payload.get('error')
-        if isinstance(message, dict):
-            message = message.get('message') or message.get('detail')
-        if message:
-            return str(message)[:300]
-    return fallback
+def ensure_remove_bg_ttl_index():
+    """
+    Membuat TTL index untuk hasil Remove BG.
+    Hasil download disimpan maksimal 1 jam.
+    """
+
+    try:
+        db.remove_bg_results.create_index(
+            [('expires_at', 1)],
+            expireAfterSeconds=0,
+            name='remove_bg_expires_ttl'
+        )
+    except PyMongoError:
+        pass
 
 
-def remove_background_with_picwish(file_storage, foreground_type='', crop=False):
-    """Kirim gambar ke PicWish sync API dan berhenti pada API key pertama yang berhasil."""
+def _is_valid_picwish_result_url(result_url):
+    """
+    Pastikan URL hasil berasal dari HTTPS.
+    URL ini berasal dari response resmi PicWish,
+    bukan input langsung dari user.
+    """
+
+    if not result_url:
+        return False
+
+    try:
+        parsed = urlparse(result_url)
+
+        if parsed.scheme != 'https':
+            return False
+
+        hostname = (parsed.hostname or '').lower()
+
+        allowed_hosts = (
+            hostname.endswith('.aoscdn.com')
+            or hostname.endswith('.aliyuncs.com')
+        )
+
+        return allowed_hosts
+
+    except Exception:
+        return False
+
+
+def process_picwish_remove_bg(file_storage, foreground_type=''):
+    """
+    Proses Remove Background menggunakan PicWish Sync API.
+
+    API key digunakan secara berurutan:
+    Key 1 → berhasil = berhenti
+    Key 1 gagal → Key 2
+    dst.
+    """
+
     api_keys = get_picwish_api_keys()
+
     if not api_keys:
-        raise PicWishProviderError('Environment `PICH` belum berisi API key PicWish.')
+        raise RuntimeError(
+            'PICH belum dikonfigurasi. Tambahkan array API key PicWish '
+            'pada Environment Variables.'
+        )
 
-    filename = secure_filename(file_storage.filename or 'image.png') or 'image.png'
-    content_type = (file_storage.mimetype or 'application/octet-stream').lower()
-    allowed_mimetypes = {
-        'image/jpeg', 'image/png', 'image/webp', 'image/bmp',
-        'image/tiff', 'image/x-tiff', 'image/jfif'
-    }
-    if not content_type.startswith('image/'):
-        raise PicWishProviderError('File yang dipilih harus berupa gambar.')
-    if content_type not in allowed_mimetypes and not filename.lower().endswith(
-        ('.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tif', '.tiff', '.jfif')
-    ):
-        raise PicWishProviderError('Format gambar belum didukung oleh Remove BG.')
+    if not file_storage or not file_storage.filename:
+        raise RuntimeError('File gambar tidak ditemukan.')
 
-    image_bytes = file_storage.read()
-    if not image_bytes:
-        raise PicWishProviderError('File gambar kosong atau tidak dapat dibaca.')
-    if len(image_bytes) > 20 * 1024 * 1024:
-        raise PicWishProviderError('Ukuran gambar maksimal 20 MB.')
+    original_filename = secure_filename(
+        file_storage.filename
+    ) or 'image'
 
-    foreground_type = (foreground_type or '').strip().lower()
-    if foreground_type not in {'', 'person', 'object', 'stamp'}:
-        foreground_type = ''
+    content_type = (
+        file_storage.mimetype
+        or 'application/octet-stream'
+    )
 
-    endpoint = (
-        os.getenv('PICWISH_REMOVE_BG_URL')
-        or 'https://techhk.aoscdn.com/api/tasks/visual/segmentation'
-    ).strip()
+    # Baca file sekali agar bisa dipakai ulang untuk key berikutnya.
+    file_bytes = file_storage.read()
+
+    if not file_bytes:
+        raise RuntimeError('File gambar kosong.')
+
+    # Batas 20 MB sesuai batas PicWish.
+    if len(file_bytes) > 20 * 1024 * 1024:
+        raise RuntimeError(
+            'Ukuran gambar terlalu besar. Maksimal 20 MB.'
+        )
+
+    picwish_url = (
+        os.getenv(
+            'PICWISH_REMOVE_BG_URL',
+            'https://techhk.aoscdn.com/api/tasks/visual/segmentation'
+        ).strip()
+    )
+
     errors = []
 
+    # API KEY BERURUTAN, BUKAN RANDOM
     for index, api_key in enumerate(api_keys, start=1):
+
         try:
-            form_data = {
+            # Reset file tidak diperlukan karena kita mengirim bytes.
+            files = {
+                'image_file': (
+                    original_filename,
+                    file_bytes,
+                    content_type
+                )
+            }
+
+            data = {
                 'sync': '1',
                 'return_type': '1',
                 'output_type': '2',
-                'crop': '1' if crop else '0',
-                'format': 'png'
+                'format': 'png',
+                'crop': '0'
             }
-            if foreground_type:
-                form_data['type'] = foreground_type
+
+            if foreground_type in {'person', 'object', 'stamp'}:
+                data['type'] = foreground_type
 
             response = requests.post(
-                endpoint,
-                headers={'X-API-KEY': api_key},
-                data=form_data,
-                files={'image_file': (filename, BytesIO(image_bytes), content_type)},
-                timeout=(15, 180)
+                picwish_url,
+                headers={
+                    'X-API-KEY': api_key
+                },
+                data=data,
+                files=files,
+                timeout=120
             )
 
+            # Parse JSON response.
             try:
-                payload = response.json()
+                result = response.json()
             except ValueError:
-                payload = {}
+                raise RuntimeError(
+                    f'Response PicWish bukan JSON '
+                    f'(HTTP {response.status_code})'
+                )
 
-            api_status = payload.get('status', response.status_code) if isinstance(payload, dict) else response.status_code
-            data = payload.get('data') if isinstance(payload, dict) else None
-            data = data if isinstance(data, dict) else {}
-            state = data.get('state')
-            result_url = data.get('image')
+            # HTTP error
+            if response.status_code != 200:
+                message = result.get(
+                    'message',
+                    f'HTTP {response.status_code}'
+                )
 
-            if (
-                response.ok
-                and str(api_status) == '200'
-                and result_url
-                and (state is None or str(state) == '1')
-            ):
-                result_url = str(result_url).strip()
-                parsed = urlparse(result_url)
-                if parsed.scheme != 'https' or not parsed.hostname:
-                    raise PicWishProviderError('PicWish mengembalikan URL hasil yang tidak valid.')
-                return {
-                    'result_url': result_url,
-                    'key_index': index,
-                    'filename': f"remove-bg-{Path(filename).stem}.png"
-                }
+                raise RuntimeError(str(message))
 
-            message = _picwish_error_message(
-                payload,
-                fallback=f'HTTP {response.status_code}'
-            )
-            normalized = message.lower()
-            key_related = (
-                response.status_code in {401, 403, 429, 500, 502, 503, 504}
-                or str(api_status) in {'401', '403', '429', '500', '502', '503', '504'}
-                or any(word in normalized for word in (
-                    'api key', 'apikey', 'unauthorized', 'credit', 'quota',
-                    'balance', 'frequency', 'rate limit', 'qps'
-                ))
-            )
+            result_data = result.get('data') or {}
 
-            if key_related:
-                errors.append(f'key #{index}: {message[:120]}')
-                app.logger.warning('PicWish key #%s gagal: %s', index, message)
-                continue
+            # Status task PicWish
+            task_state = result_data.get('state')
 
-            # Kesalahan gambar/parameter tidak akan dicoba ulang memakai key lain,
-            # agar kredit key berikutnya tidak ikut terpakai untuk input yang sama.
-            raise PicWishProviderError(message)
+            if task_state is not None:
+                try:
+                    task_state = int(task_state)
+                except (TypeError, ValueError):
+                    pass
 
-        except PicWishProviderError:
-            raise
-        except requests.RequestException as exc:
-            errors.append(f'key #{index}: koneksi gagal')
-            app.logger.warning('PicWish key #%s request gagal: %s', index, exc)
+                if task_state != 1:
+                    raise RuntimeError(
+                        f'PicWish gagal memproses gambar. '
+                        f'State: {task_state}'
+                    )
+
+            result_url = result_data.get('image')
+
+            if not result_url:
+                raise RuntimeError(
+                    'PicWish tidak mengembalikan URL hasil gambar.'
+                )
+
+            if not _is_valid_picwish_result_url(result_url):
+                raise RuntimeError(
+                    'URL hasil PicWish tidak valid.'
+                )
+
+            # Buat token download internal.
+            download_token = uuid.uuid4().hex
+
+            now = datetime.utcnow()
+            expires_at = now + timedelta(hours=1)
+
+            # Simpan URL hasil sementara.
+            db.remove_bg_results.insert_one({
+                'token': download_token,
+                'result_url': result_url,
+                'original_filename': original_filename,
+                'created_at': now,
+                'expires_at': expires_at
+            })
+
+            ensure_remove_bg_ttl_index()
+
+            return {
+                'success': True,
+                'result_url': result_url,
+                'download_token': download_token,
+                'original_filename': original_filename
+            }
+
         except Exception as exc:
-            errors.append(f'key #{index}: {type(exc).__name__}')
-            app.logger.exception('PicWish key #%s gagal', index)
+            errors.append(
+                f'key #{index}: '
+                f'{type(exc).__name__}: '
+                f'{str(exc)[:200]}'
+            )
 
-    detail = ', '.join(errors) if errors else 'tidak ada key yang berhasil'
-    raise PicWishProviderError(f'Semua API key PicWish gagal digunakan ({detail}).')
+    raise RuntimeError(
+        'Semua API key PicWish gagal digunakan:\n'
+        + '\n'.join(errors)
+    )
 
 
 @app.route('/remove-bg', methods=['GET', 'POST'])
 def remove_bg():
+
     if request.method == 'GET':
         return render_template(
-            'remove_bg.html',
-            picwish_key_count=len(get_picwish_api_keys())
+            'remove_bg.html'
         )
 
-    file = request.files.get('image')
-    if not file or not file.filename:
-        return jsonify({'ok': False, 'error': 'Silakan pilih gambar terlebih dahulu.'}), 400
+    # File wajib ada
+    if 'image' not in request.files:
+        return jsonify({
+            'ok': False,
+            'error': 'Pilih gambar terlebih dahulu.'
+        }), 400
+
+    image_file = request.files['image']
+
+    if not image_file.filename:
+        return jsonify({
+            'ok': False,
+            'error': 'Nama file gambar tidak ditemukan.'
+        }), 400
+
+    foreground_type = (
+        request.form.get('foreground_type')
+        or ''
+    ).strip()
 
     try:
-        result = remove_background_with_picwish(
-            file,
-            foreground_type=request.form.get('type'),
-            crop=request.form.get('crop') == '1'
+
+        result = process_picwish_remove_bg(
+            image_file,
+            foreground_type=foreground_type
         )
-    except PicWishProviderError as exc:
-        return jsonify({'ok': False, 'error': str(exc)}), 502
-    except Exception:
-        app.logger.exception('Remove BG PicWish gagal')
-        return jsonify({'ok': False, 'error': 'Remove BG gagal diproses oleh server.'}), 500
 
-    response = jsonify({
-        'ok': True,
-        'result_url': result['result_url'],
-        'download_name': result['filename'],
-        'key_index': result['key_index'],
-        'expires_in': 3600
+        return jsonify({
+            'ok': True,
+            'result_url': result['result_url'],
+            'download_url': url_for(
+                'download_remove_bg',
+                token=result['download_token']
+            ),
+            'filename': result['original_filename']
+        })
+
+    except RuntimeError as exc:
+
+        return jsonify({
+            'ok': False,
+            'error': str(exc)
+        }), 502
+
+    except Exception as exc:
+
+        app.logger.exception(
+            'Remove BG error'
+        )
+
+        return jsonify({
+            'ok': False,
+            'error': (
+                'Terjadi kesalahan saat '
+                'memproses gambar.'
+            )
+        }), 500
+
+
+@app.route('/remove-bg/download/<token>')
+def download_remove_bg(token):
+
+    ensure_remove_bg_ttl_index()
+
+    record = db.remove_bg_results.find_one({
+        'token': token
     })
-    response.headers['Cache-Control'] = 'no-store'
-    return response
 
+    if not record:
+        abort(404)
 
+    expires_at = record.get('expires_at')
+
+    if expires_at and datetime.utcnow() > expires_at:
+        db.remove_bg_results.delete_one({
+            '_id': record['_id']
+        })
+
+        abort(410)
+
+    result_url = record.get(
+        'result_url'
+    )
+
+    if not _is_valid_picwish_result_url(
+        result_url
+    ):
+        abort(404)
+
+    try:
+
+        response = requests.get(
+            result_url,
+            timeout=60
+        )
+
+        response.raise_for_status()
+
+        file_bytes = response.content
+
+        if not file_bytes:
+            abort(502)
+
+        original_filename = (
+            record.get(
+                'original_filename'
+            )
+            or 'image'
+        )
+
+        base_name = os.path.splitext(
+            original_filename
+        )[0]
+
+        download_name = (
+            f'{base_name}-no-bg.png'
+        )
+
+        return send_file(
+            BytesIO(file_bytes),
+            mimetype='image/png',
+            as_attachment=True,
+            download_name=download_name,
+            max_age=0
+        )
+
+    except requests.RequestException as exc:
+
+        app.logger.warning(
+            'PicWish download failed: %s',
+            exc
+        )
+
+        abort(502)
 # ==========================================
 # 9. TOOLS — TIKTOK DOWNLOADER HD
 # ==========================================
