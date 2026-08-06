@@ -91,7 +91,40 @@
             <div class="tool-card-body">
                 <span class="badge info dot">PicWish Sync</span>
                 <h3>Remove Background</h3>
-                <p>Hapus background gambar dan bandingkan hasil sebelum–sesudah menggunakan slider.</p>
+                <p>Hapus background gambar dengan PicWish dan download hasil PNG secara langsung.</p>
+            </div>
+            <svg class="tool-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </a>
+        <a class="tool-card" href="{{ url_for('enhance_photo') }}">
+            <div class="tool-icon tool-icon--enhance">
+                <svg viewBox="0 0 24 24"><path d="m12 3 1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7L12 3Z"/><path d="m19 14 .9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9L19 14Z"/></svg>
+            </div>
+            <div class="tool-card-body">
+                <span class="badge info dot">PicWish Sync</span>
+                <h3>Enhance Photo</h3>
+                <p>Perjelas detail foto, tingkatkan resolusi, lalu download hasil secara langsung.</p>
+            </div>
+            <svg class="tool-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </a>
+        <a class="tool-card" href="{{ url_for('fyy_share') }}">
+            <div class="tool-icon tool-icon--share">
+                <svg viewBox="0 0 24 24"><path d="M12 5v10M8 9l4-4 4 4"/><rect x="3" y="15" width="18" height="6" rx="2"/><path d="M7 18h.01"/></svg>
+            </div>
+            <div class="tool-card-body">
+                <span class="badge success dot">Local Wi-Fi</span>
+                <h3>FYY Share LAN</h3>
+                <p>Pairing QR, transfer dua arah, dan penghitung byte real-time melalui satu jaringan Wi-Fi.</p>
+            </div>
+            <svg class="tool-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </a>
+        <a class="tool-card" href="{{ url_for('image_splitter') }}">
+            <div class="tool-icon tool-icon--split">
+                <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="m8.7 7.5 11.3 6.5M8.7 16.5 20 10"/></svg>
+            </div>
+            <div class="tool-card-body">
+                <span class="badge warning dot">PNG Lossless</span>
+                <h3>Image Splitter</h3>
+                <p>Potong gambar vertikal, horizontal, atau grid dan download satuan maupun ZIP.</p>
             </div>
             <svg class="tool-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
         </a>
