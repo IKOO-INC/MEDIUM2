@@ -41,7 +41,15 @@ app.secret_key = os.getenv('SECRET_KEY', 'fyy-medium-dev-secret-change-me')
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Maksimal ukuran file 16MB
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-
+# Konfigurasi Upload
+app.config['UPLOAD_FOLDER'] = 'static/uploads'
+try:
+    _default_upload_mb = 20 if os.getenv('VERCEL') else 512
+    _max_upload_mb = int(os.getenv('APP_MAX_UPLOAD_MB', str(_default_upload_mb)))
+except ValueError:
+    _max_upload_mb = 20 if os.getenv('VERCEL') else 512
+app.config['MAX_CONTENT_LENGTH'] = max(20, min(_max_upload_mb, 4096)) * 1024 * 1024
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 # Nama hari bahasa Indonesia
 indo_days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
 
@@ -1341,6 +1349,1237 @@ def tiktok_downloader():
         'tiktok_downloader.html',
         error=error,
         tiktok_url=tiktok_url
+    )
+
+# ==========================================
+# 9. TOOLS — ENHANCE PHOTO (PICWISH SYNC)
+# ==========================================
+def enhance_photo_with_picwish(
+    file_storage,
+    enhance_type='clean',
+    scale_factor='',
+    output_format='jpg'
+):
+    """Enhance gambar lewat PicWish Sync dan berhenti pada key pertama yang sukses."""
+    api_keys = get_picwish_api_keys()
+    if not api_keys:
+        raise PicWishProviderError('Environment `PICH` belum berisi API key PicWish.')
+
+    filename = secure_filename(file_storage.filename or 'photo.jpg') or 'photo.jpg'
+    content_type = (file_storage.mimetype or 'application/octet-stream').lower()
+    if not content_type.startswith('image/'):
+        raise PicWishProviderError('File yang dipilih harus berupa gambar.')
+
+    image_bytes = file_storage.read()
+    if not image_bytes:
+        raise PicWishProviderError('File gambar kosong atau tidak dapat dibaca.')
+    if len(image_bytes) > 20 * 1024 * 1024:
+        raise PicWishProviderError('Ukuran gambar maksimal 20 MB.')
+
+    enhance_type = (enhance_type or 'clean').strip().lower()
+    if enhance_type not in {'clean', 'face'}:
+        enhance_type = 'clean'
+
+    scale_factor = str(scale_factor or '').strip()
+    if scale_factor not in {'', '1', '2', '4'}:
+        scale_factor = ''
+
+    output_format = (output_format or 'jpg').strip().lower()
+    if output_format not in {'jpg', 'png'}:
+        output_format = 'jpg'
+
+    endpoint = (
+        os.getenv('PICWISH_PHOTO_ENHANCER_URL')
+        or 'https://techhk.aoscdn.com/api/tasks/visual/scale'
+    ).strip()
+    errors = []
+
+    for index, api_key in enumerate(api_keys, start=1):
+        try:
+            form_data = {
+                'sync': '1',
+                'return_type': '1',
+                'type': enhance_type,
+                'format': output_format
+            }
+            if scale_factor:
+                form_data['scale_factor'] = scale_factor
+
+            response = requests.post(
+                endpoint,
+                headers={'X-API-KEY': api_key},
+                data=form_data,
+                files={'image_file': (filename, BytesIO(image_bytes), content_type)},
+                timeout=(15, 180)
+            )
+
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = {}
+
+            api_status = payload.get('status', response.status_code) if isinstance(payload, dict) else response.status_code
+            data = payload.get('data') if isinstance(payload, dict) else None
+            data = data if isinstance(data, dict) else {}
+            state = data.get('state')
+            result_url = data.get('image')
+
+            if (
+                response.ok
+                and str(api_status) == '200'
+                and result_url
+                and (state is None or str(state) == '1')
+            ):
+                result_url = str(result_url).strip()
+                parsed = urlparse(result_url)
+                if parsed.scheme != 'https' or not parsed.hostname:
+                    raise PicWishProviderError('PicWish mengembalikan URL hasil yang tidak valid.')
+                extension = 'png' if output_format == 'png' else 'jpg'
+                return {
+                    'result_url': result_url,
+                    'key_index': index,
+                    'filename': f"enhanced-{Path(filename).stem}.{extension}",
+                    'mimetype': 'image/png' if extension == 'png' else 'image/jpeg'
+                }
+
+            message = _picwish_error_message(payload, fallback=f'HTTP {response.status_code}')
+            normalized = message.lower()
+            key_related = (
+                response.status_code in {401, 403, 429, 500, 502, 503, 504}
+                or str(api_status) in {'401', '403', '429', '500', '502', '503', '504'}
+                or any(word in normalized for word in (
+                    'api key', 'apikey', 'unauthorized', 'credit', 'quota',
+                    'balance', 'frequency', 'rate limit', 'qps'
+                ))
+            )
+
+            if key_related:
+                errors.append(f'key #{index}: {message[:120]}')
+                app.logger.warning('PicWish enhancer key #%s gagal: %s', index, message)
+                continue
+
+            raise PicWishProviderError(message)
+
+        except PicWishProviderError:
+            raise
+        except requests.RequestException as exc:
+            errors.append(f'key #{index}: koneksi gagal')
+            app.logger.warning('PicWish enhancer key #%s request gagal: %s', index, exc)
+        except Exception as exc:
+            errors.append(f'key #{index}: {type(exc).__name__}')
+            app.logger.exception('PicWish enhancer key #%s gagal', index)
+
+    detail = ', '.join(errors) if errors else 'tidak ada key yang berhasil'
+    raise PicWishProviderError(f'Semua API key PicWish gagal digunakan ({detail}).')
+
+
+@app.route('/enhance-photo', methods=['GET', 'POST'])
+def enhance_photo():
+    if request.method == 'GET':
+        return render_template(
+            'enhance_photo.html',
+            picwish_key_count=len(get_picwish_api_keys())
+        )
+
+    file = request.files.get('image')
+    if not file or not file.filename:
+        return render_template(
+            'enhance_photo.html',
+            picwish_key_count=len(get_picwish_api_keys()),
+            error='Silakan pilih gambar terlebih dahulu.'
+        ), 400
+
+    try:
+        result = enhance_photo_with_picwish(
+            file,
+            enhance_type=request.form.get('type'),
+            scale_factor=request.form.get('scale_factor'),
+            output_format=request.form.get('format')
+        )
+
+        result_response = requests.get(result['result_url'], timeout=(15, 120))
+        result_response.raise_for_status()
+        result_bytes = result_response.content
+        if not result_bytes:
+            raise PicWishProviderError('Hasil Enhance Photo dari PicWish kosong.')
+
+        response = send_file(
+            BytesIO(result_bytes),
+            mimetype=result['mimetype'],
+            as_attachment=True,
+            download_name=result['filename'],
+            max_age=0
+        )
+        response.headers['X-PicWish-Key-Index'] = str(result['key_index'])
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+
+    except PicWishProviderError as exc:
+        return render_template(
+            'enhance_photo.html',
+            picwish_key_count=len(get_picwish_api_keys()),
+            error=str(exc)
+        ), 502
+    except requests.RequestException as exc:
+        app.logger.warning('Hasil PicWish enhancer gagal diambil: %s', exc)
+        return render_template(
+            'enhance_photo.html',
+            picwish_key_count=len(get_picwish_api_keys()),
+            error='Enhance Photo berhasil diproses, tetapi hasil PicWish gagal diunduh.'
+        ), 502
+    except Exception:
+        app.logger.exception('Enhance Photo PicWish gagal')
+        return render_template(
+            'enhance_photo.html',
+            picwish_key_count=len(get_picwish_api_keys()),
+            error='Enhance Photo gagal diproses oleh server.'
+        ), 500
+
+# ==========================================
+# TOOLS — FYY SHARE LAN (BIDIRECTIONAL WIFI TRANSFER)
+# ==========================================
+class FyyShareError(RuntimeError):
+    """Kesalahan terkontrol dari fitur FYY Share LAN."""
+
+
+FYY_SHARE_ROOT = Path(
+    os.getenv(
+        'FYY_SHARE_DIR',
+        str(Path(tempfile.gettempdir()) / 'fyy-share-lan')
+    )
+)
+FYY_SHARE_ROOT.mkdir(parents=True, exist_ok=True)
+FYY_SHARE_LOCK = threading.RLock()
+FYY_SHARE_ROLES = {'host', 'peer'}
+
+
+def get_fyy_share_ttl_minutes():
+    try:
+        value = int(os.getenv('FYY_SHARE_TTL_MINUTES', '30'))
+    except ValueError:
+        value = 30
+    return max(5, min(value, 1440))
+
+
+def get_fyy_share_max_mb():
+    try:
+        value = int(os.getenv('FYY_SHARE_MAX_MB', '512'))
+    except ValueError:
+        value = 512
+    return max(1, min(value, 4096))
+
+
+def fyy_share_local_runtime_enabled():
+    """LAN transfer harus dijalankan pada perangkat lokal, bukan Vercel."""
+    forced = (os.getenv('FYY_SHARE_LAN_ENABLED') or '').strip().lower()
+    if forced in {'1', 'true', 'yes', 'on'}:
+        return True
+    if forced in {'0', 'false', 'no', 'off'}:
+        return False
+    return not bool(os.getenv('VERCEL'))
+
+
+def _valid_fyy_share_token(token):
+    token = (token or '').strip().lower()
+    return len(token) == 32 and all(char in '0123456789abcdef' for char in token)
+
+
+def _valid_fyy_share_role(role):
+    return (role or '').strip().lower() in FYY_SHARE_ROLES
+
+
+def _fyy_share_other_role(role):
+    return 'peer' if role == 'host' else 'host'
+
+
+def _fyy_share_dir(token):
+    if not _valid_fyy_share_token(token):
+        raise FyyShareError('Token FYY Share tidak valid.')
+    return FYY_SHARE_ROOT / token
+
+
+def _fyy_share_meta_path(token):
+    return _fyy_share_dir(token) / 'meta.json'
+
+
+def _empty_fyy_share_file(role):
+    return {
+        'state': 'empty',
+        'filename': '',
+        'stored_name': f'payload-{role}.bin',
+        'content_type': '',
+        'bytes': 0,
+        'ready_at': '',
+        'download_count': 0,
+        'transfer_state': 'idle',
+        'transferred_bytes': 0,
+        'transfer_total': 0,
+        'transfer_updated_at': '',
+        'last_completed_id': ''
+    }
+
+
+def _normalize_fyy_share_meta(meta):
+    """Normalisasi metadata dan migrasikan format FYY Share LAN lama."""
+    if not isinstance(meta, dict):
+        return None
+
+    normalized = dict(meta)
+    files = normalized.get('files')
+    if not isinstance(files, dict):
+        files = {}
+
+    for role in FYY_SHARE_ROLES:
+        current = files.get(role)
+        if not isinstance(current, dict):
+            current = {}
+        merged = _empty_fyy_share_file(role)
+        merged.update(current)
+        files[role] = merged
+
+    # Migrasi satu file versi lama sebagai file milik host.
+    if normalized.get('filename') and files['host'].get('state') == 'empty':
+        files['host'].update({
+            'state': 'ready' if normalized.get('state') == 'ready' else 'empty',
+            'filename': normalized.get('filename') or '',
+            'stored_name': normalized.get('stored_name') or 'payload.bin',
+            'content_type': normalized.get('content_type') or '',
+            'bytes': int(normalized.get('bytes') or 0),
+            'ready_at': normalized.get('ready_at') or '',
+            'download_count': int(normalized.get('download_count') or 0)
+        })
+
+    participants = normalized.get('participants')
+    if not isinstance(participants, dict):
+        participants = {}
+
+    host = participants.get('host') if isinstance(participants.get('host'), dict) else {}
+    peer = participants.get('peer') if isinstance(participants.get('peer'), dict) else {}
+    participants['host'] = {
+        'ip': host.get('ip') or '',
+        'last_seen': host.get('last_seen') or ''
+    }
+    participants['peer'] = {
+        'ip': peer.get('ip') or normalized.get('receiver_ip') or '',
+        'last_seen': peer.get('last_seen') or normalized.get('receiver_last_seen') or ''
+    }
+
+    normalized['files'] = files
+    normalized['participants'] = participants
+    normalized.pop('state', None)
+    return normalized
+
+
+def _read_fyy_share_meta(token):
+    try:
+        meta_path = _fyy_share_meta_path(token)
+    except FyyShareError:
+        return None
+
+    if not meta_path.is_file():
+        return None
+
+    try:
+        data = json.loads(meta_path.read_text(encoding='utf-8'))
+    except (OSError, ValueError, TypeError):
+        return None
+
+    return _normalize_fyy_share_meta(data)
+
+
+def _write_fyy_share_meta(meta):
+    normalized = _normalize_fyy_share_meta(meta)
+    if not normalized:
+        raise FyyShareError('Metadata sesi FYY Share tidak valid.')
+
+    token = normalized.get('token')
+    share_dir = _fyy_share_dir(token)
+    share_dir.mkdir(parents=True, exist_ok=True)
+    meta_path = share_dir / 'meta.json'
+    temp_path = share_dir / 'meta.tmp'
+    temp_path.write_text(
+        json.dumps(normalized, ensure_ascii=False, separators=(',', ':')),
+        encoding='utf-8'
+    )
+    os.replace(temp_path, meta_path)
+
+
+def _parse_share_datetime(value):
+    try:
+        return datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def cleanup_expired_fyy_shares(limit=100):
+    """Hapus file lokal yang masa aktifnya habis, tanpa MongoDB/Cloudinary."""
+    now = datetime.utcnow()
+    removed = 0
+
+    try:
+        candidates = list(FYY_SHARE_ROOT.iterdir())
+    except OSError:
+        return
+
+    for share_dir in candidates:
+        if removed >= limit:
+            break
+        if not share_dir.is_dir():
+            continue
+
+        meta = _read_fyy_share_meta(share_dir.name)
+        expires_at = _parse_share_datetime(meta.get('expires_at')) if meta else None
+        if not meta or not expires_at or expires_at <= now:
+            shutil.rmtree(share_dir, ignore_errors=True)
+            removed += 1
+
+
+def create_fyy_share_session():
+    cleanup_expired_fyy_shares()
+    now = datetime.utcnow()
+    token = uuid.uuid4().hex
+    meta = {
+        'token': token,
+        'files': {
+            'host': _empty_fyy_share_file('host'),
+            'peer': _empty_fyy_share_file('peer')
+        },
+        'participants': {
+            'host': {'ip': '', 'last_seen': ''},
+            'peer': {'ip': '', 'last_seen': ''}
+        },
+        'created_at': now.isoformat(),
+        'expires_at': (now + timedelta(minutes=get_fyy_share_ttl_minutes())).isoformat()
+    }
+    with FYY_SHARE_LOCK:
+        _write_fyy_share_meta(meta)
+    return meta
+
+
+def get_active_fyy_share(token):
+    meta = _read_fyy_share_meta(token)
+    if not meta:
+        return None
+
+    expires_at = _parse_share_datetime(meta.get('expires_at'))
+    if not expires_at or expires_at <= datetime.utcnow():
+        shutil.rmtree(_fyy_share_dir(token), ignore_errors=True)
+        return None
+
+    return meta
+
+
+def _mutate_fyy_share(token, callback):
+    """Mutasi metadata secara atomik dalam satu proses Flask."""
+    with FYY_SHARE_LOCK:
+        meta = get_active_fyy_share(token)
+        if not meta:
+            return None
+        callback(meta)
+        _write_fyy_share_meta(meta)
+        return meta
+
+
+def _fyy_share_role_authorized(token, role):
+    if role == 'host':
+        return session.get('fyy_share_sender_token') == token
+    if role == 'peer':
+        return session.get('fyy_share_peer_token') == token
+    return False
+
+
+def _mark_fyy_share_seen(token, role):
+    if not _valid_fyy_share_role(role):
+        return None
+
+    def update(meta):
+        participant = meta['participants'][role]
+        participant['ip'] = request.remote_addr or participant.get('ip') or ''
+        participant['last_seen'] = datetime.utcnow().isoformat()
+
+    return _mutate_fyy_share(token, update)
+
+
+def _fyy_share_participant_online(meta, role, timeout_seconds=8):
+    participant = (meta.get('participants') or {}).get(role) or {}
+    last_seen = _parse_share_datetime(participant.get('last_seen'))
+    if not last_seen:
+        return False
+    return (datetime.utcnow() - last_seen).total_seconds() <= timeout_seconds
+
+
+def save_fyy_share_file(token, role, file_storage):
+    if not _valid_fyy_share_role(role):
+        raise FyyShareError('Peran perangkat tidak valid.')
+
+    meta = get_active_fyy_share(token)
+    if not meta:
+        raise FyyShareError('Sesi FYY Share sudah tidak aktif.')
+
+    original_filename = secure_filename(file_storage.filename or 'file') or 'file'
+    content_type = file_storage.mimetype or 'application/octet-stream'
+    share_dir = _fyy_share_dir(token)
+    stored_name = f'payload-{role}.bin'
+    final_path = share_dir / stored_name
+    temp_path = share_dir / f'payload-{role}.uploading'
+
+    try:
+        file_storage.save(temp_path)
+        size = temp_path.stat().st_size
+    except OSError as exc:
+        temp_path.unlink(missing_ok=True)
+        raise FyyShareError('File gagal disimpan pada perangkat server lokal.') from exc
+
+    max_bytes = get_fyy_share_max_mb() * 1024 * 1024
+    if size <= 0:
+        temp_path.unlink(missing_ok=True)
+        raise FyyShareError('File kosong tidak dapat dibagikan.')
+    if size > max_bytes:
+        temp_path.unlink(missing_ok=True)
+        raise FyyShareError(
+            f'Ukuran file melebihi batas {get_fyy_share_max_mb()} MB.'
+        )
+
+    os.replace(temp_path, final_path)
+
+    def update(current):
+        current_file = current['files'][role]
+        current_file.update({
+            'state': 'ready',
+            'filename': original_filename,
+            'stored_name': stored_name,
+            'content_type': content_type,
+            'bytes': size,
+            'ready_at': datetime.utcnow().isoformat(),
+            'download_count': 0,
+            'transfer_state': 'ready',
+            'transferred_bytes': 0,
+            'transfer_total': size,
+            'transfer_updated_at': datetime.utcnow().isoformat(),
+            'last_completed_id': ''
+        })
+
+    updated = _mutate_fyy_share(token, update)
+    if not updated:
+        final_path.unlink(missing_ok=True)
+        raise FyyShareError('Sesi FYY Share sudah berakhir.')
+    return updated
+
+
+def delete_fyy_share_file_data(token, role):
+    if not _valid_fyy_share_role(role):
+        raise FyyShareError('Peran perangkat tidak valid.')
+
+    meta = get_active_fyy_share(token)
+    if not meta:
+        raise FyyShareError('Sesi FYY Share sudah tidak aktif.')
+
+    file_data = meta['files'][role]
+    stored_name = file_data.get('stored_name') or f'payload-{role}.bin'
+    (_fyy_share_dir(token) / stored_name).unlink(missing_ok=True)
+
+    def update(current):
+        current['files'][role] = _empty_fyy_share_file(role)
+
+    return _mutate_fyy_share(token, update)
+
+
+def _public_fyy_share_file(token, role, file_data, include_download=False):
+    payload = {
+        'state': file_data.get('state') or 'empty',
+        'filename': file_data.get('filename') or '',
+        'content_type': file_data.get('content_type') or '',
+        'bytes': int(file_data.get('bytes') or 0),
+        'download_count': int(file_data.get('download_count') or 0),
+        'transfer_state': file_data.get('transfer_state') or 'idle',
+        'transferred_bytes': int(file_data.get('transferred_bytes') or 0),
+        'transfer_total': int(file_data.get('transfer_total') or file_data.get('bytes') or 0)
+    }
+    if include_download and payload['state'] == 'ready':
+        payload['download_url'] = url_for(
+            'fyy_share_download',
+            token=token,
+            source_role=role
+        )
+    else:
+        payload['download_url'] = ''
+    return payload
+
+
+def _private_ipv4(value):
+    try:
+        address = ipaddress.ip_address(str(value).strip())
+    except ValueError:
+        return None
+    if address.version != 4 or address.is_loopback or address.is_unspecified:
+        return None
+    if address.is_private or address.is_link_local:
+        return str(address)
+    return None
+
+
+def detect_fyy_share_lan_ip():
+    explicit = _private_ipv4(os.getenv('FYY_SHARE_LAN_HOST', ''))
+    if explicit:
+        return explicit
+
+    try:
+        request_host = request.host.split(':', 1)[0].strip('[]')
+    except RuntimeError:
+        request_host = ''
+    detected = _private_ipv4(request_host)
+    if detected:
+        return detected
+
+    candidates = []
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.settimeout(0.25)
+            sock.connect(('10.255.255.255', 1))
+            candidates.append(sock.getsockname()[0])
+    except OSError:
+        pass
+
+    try:
+        hostname = socket.gethostname()
+        candidates.extend(socket.gethostbyname_ex(hostname)[2])
+    except OSError:
+        pass
+
+    for candidate in candidates:
+        detected = _private_ipv4(candidate)
+        if detected:
+            return detected
+
+    return '127.0.0.1'
+
+
+def get_fyy_share_lan_port():
+    explicit = (os.getenv('FYY_SHARE_LAN_PORT') or '').strip()
+    if explicit.isdigit():
+        return int(explicit)
+
+    try:
+        host_value = request.host
+        if ':' in host_value:
+            possible = host_value.rsplit(':', 1)[1]
+            if possible.isdigit():
+                return int(possible)
+    except RuntimeError:
+        pass
+
+    return 5000
+
+
+def build_fyy_share_lan_url(token):
+    host = detect_fyy_share_lan_ip()
+    port = get_fyy_share_lan_port()
+    port_suffix = '' if port == 80 else f':{port}'
+    path = url_for('fyy_share_receive', token=token)
+    return f'http://{host}{port_suffix}{path}'
+
+
+def _fyy_share_template_context(share, role, **extra):
+    other_role = _fyy_share_other_role(role)
+    context = {
+        'share': share,
+        'role': role,
+        'other_role': other_role,
+        'own_file': share['files'][role],
+        'incoming_file': share['files'][other_role],
+        'other_online': _fyy_share_participant_online(share, other_role),
+        'other_ip': share['participants'][other_role].get('ip') or '',
+        'ttl_minutes': get_fyy_share_ttl_minutes(),
+        'max_mb': get_fyy_share_max_mb()
+    }
+    context.update(extra)
+    return context
+
+
+@app.route('/fyy-share', methods=['GET', 'POST'])
+def fyy_share():
+    cleanup_expired_fyy_shares()
+    local_runtime = fyy_share_local_runtime_enabled()
+    error = ''
+
+    if not local_runtime:
+        return render_template(
+            'fyy_share.html',
+            error='',
+            share=None,
+            local_runtime=False,
+            ttl_minutes=get_fyy_share_ttl_minutes(),
+            max_mb=get_fyy_share_max_mb()
+        )
+
+    token = (
+        request.form.get('token')
+        or request.args.get('token')
+        or session.get('fyy_share_sender_token')
+        or ''
+    ).strip()
+    share = get_active_fyy_share(token)
+
+    if request.args.get('new') == '1' or not share:
+        share = create_fyy_share_session()
+        token = share['token']
+        session['fyy_share_sender_token'] = token
+
+    _mark_fyy_share_seen(token, 'host')
+    share = get_active_fyy_share(token)
+
+    # Fallback tanpa JavaScript tetap didukung.
+    if request.method == 'POST':
+        if not _fyy_share_role_authorized(token, 'host'):
+            abort(403)
+        file = request.files.get('file')
+        if not file or not file.filename:
+            error = 'Silakan pilih file yang akan dikirim.'
+        else:
+            try:
+                share = save_fyy_share_file(token, 'host', file)
+                return redirect(url_for('fyy_share', token=token))
+            except FyyShareError as exc:
+                error = str(exc)
+            except Exception:
+                app.logger.exception('FYY Share LAN gagal menyimpan file host')
+                error = 'File gagal disiapkan pada perangkat pengirim.'
+
+    lan_ip = detect_fyy_share_lan_ip()
+    lan_port = get_fyy_share_lan_port()
+    context = _fyy_share_template_context(
+        share,
+        'host',
+        error=error,
+        local_runtime=True,
+        lan_ready=lan_ip != '127.0.0.1',
+        lan_ip=lan_ip,
+        lan_port=lan_port,
+        share_url=build_fyy_share_lan_url(token)
+    )
+    return render_template('fyy_share.html', **context)
+
+
+@app.route('/fyy-share/<token>', methods=['GET'])
+def fyy_share_receive(token):
+    share = get_active_fyy_share(token)
+    if not share:
+        abort(404)
+
+    session['fyy_share_peer_token'] = token
+    _mark_fyy_share_seen(token, 'peer')
+    share = get_active_fyy_share(token)
+    context = _fyy_share_template_context(
+        share,
+        'peer',
+        local_runtime=True,
+        share_url=request.url,
+        lan_ip=detect_fyy_share_lan_ip(),
+        lan_port=get_fyy_share_lan_port(),
+        lan_ready=True,
+        error=''
+    )
+    return render_template('fyy_share_receive.html', **context)
+
+
+@app.route('/fyy-share/status/<token>')
+def fyy_share_status(token):
+    role = (request.args.get('role') or '').strip().lower()
+    if not _valid_fyy_share_role(role) or not _fyy_share_role_authorized(token, role):
+        return jsonify({'ok': False, 'error': 'Sesi perangkat tidak valid.'}), 403
+
+    share = _mark_fyy_share_seen(token, role)
+    if not share:
+        return jsonify({'ok': False, 'expired': True}), 404
+
+    other_role = _fyy_share_other_role(role)
+    return jsonify({
+        'ok': True,
+        'role': role,
+        'other_role': other_role,
+        'other_connected': _fyy_share_participant_online(share, other_role),
+        'other_ip': share['participants'][other_role].get('ip') or '',
+        'own_file': _public_fyy_share_file(token, role, share['files'][role]),
+        'incoming_file': _public_fyy_share_file(
+            token,
+            other_role,
+            share['files'][other_role],
+            include_download=True
+        ),
+        'expires_at': share.get('expires_at') or ''
+    })
+
+
+@app.route('/fyy-share/upload/<token>/<role>', methods=['POST'])
+def fyy_share_upload(token, role):
+    role = (role or '').strip().lower()
+    if not _valid_fyy_share_role(role) or not _fyy_share_role_authorized(token, role):
+        return jsonify({'ok': False, 'error': 'Akses upload ditolak.'}), 403
+
+    file = request.files.get('file')
+    if not file or not file.filename:
+        return jsonify({'ok': False, 'error': 'Silakan pilih file.'}), 400
+
+    try:
+        share = save_fyy_share_file(token, role, file)
+    except FyyShareError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+    except Exception:
+        app.logger.exception('FYY Share LAN upload gagal')
+        return jsonify({'ok': False, 'error': 'File gagal disiapkan.'}), 500
+
+    return jsonify({
+        'ok': True,
+        'file': _public_fyy_share_file(token, role, share['files'][role])
+    })
+
+
+@app.route('/fyy-share/file/<token>/<role>/delete', methods=['POST'])
+def delete_fyy_share_file(token, role):
+    role = (role or '').strip().lower()
+    if not _valid_fyy_share_role(role) or not _fyy_share_role_authorized(token, role):
+        return jsonify({'ok': False, 'error': 'Akses ditolak.'}), 403
+
+    try:
+        delete_fyy_share_file_data(token, role)
+    except FyyShareError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 404
+    return jsonify({'ok': True})
+
+
+@app.route('/fyy-share/progress/<token>/<source_role>', methods=['POST'])
+def fyy_share_transfer_progress(token, source_role):
+    source_role = (source_role or '').strip().lower()
+    receiver_role = _fyy_share_other_role(source_role) if _valid_fyy_share_role(source_role) else ''
+    if not receiver_role or not _fyy_share_role_authorized(token, receiver_role):
+        return jsonify({'ok': False, 'error': 'Akses progres ditolak.'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    try:
+        received = max(0, int(payload.get('received') or 0))
+        total = max(0, int(payload.get('total') or 0))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'Nilai byte tidak valid.'}), 400
+
+    state = str(payload.get('state') or 'downloading').strip().lower()
+    if state not in {'downloading', 'completed', 'cancelled', 'error'}:
+        state = 'downloading'
+    transfer_id = str(payload.get('transfer_id') or '').strip()[:80]
+
+    def update(meta):
+        file_data = meta['files'][source_role]
+        file_size = int(file_data.get('bytes') or 0)
+        safe_total = total or file_size
+        safe_received = min(received, safe_total) if safe_total else received
+        file_data['transfer_state'] = state
+        file_data['transferred_bytes'] = safe_received
+        file_data['transfer_total'] = safe_total
+        file_data['transfer_updated_at'] = datetime.utcnow().isoformat()
+        if state == 'completed':
+            file_data['transferred_bytes'] = safe_total or file_size
+            completed_id = transfer_id or f'{receiver_role}:{datetime.utcnow().isoformat()}'
+            if file_data.get('last_completed_id') != completed_id:
+                file_data['download_count'] = int(file_data.get('download_count') or 0) + 1
+                file_data['last_completed_id'] = completed_id
+
+    share = _mutate_fyy_share(token, update)
+    if not share:
+        return jsonify({'ok': False, 'expired': True}), 404
+    return jsonify({'ok': True})
+
+
+@app.route('/fyy-share/qr/<token>.png')
+def fyy_share_qr(token):
+    share = get_active_fyy_share(token)
+    if not share:
+        abort(404)
+
+    receive_url = build_fyy_share_lan_url(token)
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=ERROR_CORRECT_M,
+        box_size=9,
+        border=4
+    )
+    qr.add_data(receive_url)
+    qr.make(fit=True)
+    image = qr.make_image(fill_color='black', back_color='white')
+    buffer = BytesIO()
+    image.save(buffer, format='PNG')
+    buffer.seek(0)
+    return send_file(buffer, mimetype='image/png', max_age=0)
+
+
+@app.route('/fyy-share/download/<token>/<source_role>')
+def fyy_share_download(token, source_role):
+    source_role = (source_role or '').strip().lower()
+    receiver_role = _fyy_share_other_role(source_role) if _valid_fyy_share_role(source_role) else ''
+    if not receiver_role or not _fyy_share_role_authorized(token, receiver_role):
+        abort(403)
+
+    share = get_active_fyy_share(token)
+    if not share:
+        abort(404)
+
+    file_data = share['files'][source_role]
+    if file_data.get('state') != 'ready':
+        abort(404)
+
+    file_path = _fyy_share_dir(token) / (
+        file_data.get('stored_name') or f'payload-{source_role}.bin'
+    )
+    if not file_path.is_file():
+        abort(404)
+
+    return send_file(
+        file_path,
+        mimetype=file_data.get('content_type') or 'application/octet-stream',
+        as_attachment=True,
+        download_name=file_data.get('filename') or 'fyy-share-file',
+        max_age=0,
+        conditional=True
+    )
+
+
+@app.route('/fyy-share/delete/<token>', methods=['POST'])
+def delete_fyy_share(token):
+    if session.get('fyy_share_sender_token') != token:
+        abort(403)
+
+    try:
+        shutil.rmtree(_fyy_share_dir(token), ignore_errors=True)
+    except FyyShareError:
+        abort(404)
+
+    session.pop('fyy_share_sender_token', None)
+    return redirect(url_for('fyy_share', new='1'))
+
+
+# ==========================================
+# TOOLS — IMAGE SPLITTER (PILLOW)
+# ==========================================
+class ImageSplitterError(RuntimeError):
+    """Kesalahan terkontrol dari Image Splitter."""
+
+
+def get_image_split_ttl_hours():
+    try:
+        value = int(os.getenv('IMAGE_SPLIT_TTL_HOURS', '6'))
+    except ValueError:
+        value = 6
+    return max(1, min(value, 24))
+
+
+def cleanup_expired_image_splits(limit=12):
+    now = datetime.utcnow()
+    expired = list(db.image_split_sessions.find({'expires_at': {'$lte': now}}).limit(limit))
+    for session_doc in expired:
+        for item in session_doc.get('items', []):
+            file_id = item.get('file_id')
+            try:
+                split_fs.delete(file_id)
+            except Exception:
+                pass
+        db.image_split_sessions.delete_one({'_id': session_doc['_id']})
+
+
+def _axis_bounds_by_count(length, count):
+    if count < 1 or count > length:
+        raise ImageSplitterError('Jumlah blok melebihi ukuran piksel gambar.')
+    return [(index * length) // count for index in range(count)] + [length]
+
+
+def _axis_bounds_by_size(length, block_size):
+    if block_size < 1:
+        raise ImageSplitterError('Ukuran blok minimal 1 piksel.')
+    bounds = list(range(0, length, block_size))
+    if not bounds or bounds[-1] != length:
+        bounds.append(length)
+    return bounds
+
+
+def _parse_positive_int(value, label, minimum=1, maximum=64):
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        raise ImageSplitterError(f'{label} harus berupa angka.')
+    if number < minimum or number > maximum:
+        raise ImageSplitterError(f'{label} harus antara {minimum} dan {maximum}.')
+    return number
+
+
+def build_image_split_boxes(width, height, form):
+    direction = (form.get('direction') or 'vertical').strip().lower()
+    split_by = (form.get('split_by') or 'quantity').strip().lower()
+    if direction not in {'vertical', 'horizontal', 'grid'}:
+        direction = 'vertical'
+    if split_by not in {'quantity', 'pixels'}:
+        split_by = 'quantity'
+
+    if split_by == 'quantity':
+        if direction == 'vertical':
+            columns = _parse_positive_int(form.get('quantity'), 'Quantity of blocks', maximum=32)
+            rows = 1
+        elif direction == 'horizontal':
+            rows = _parse_positive_int(form.get('quantity'), 'Quantity of blocks', maximum=32)
+            columns = 1
+        else:
+            columns = _parse_positive_int(form.get('columns'), 'Jumlah kolom', maximum=16)
+            rows = _parse_positive_int(form.get('rows'), 'Jumlah baris', maximum=16)
+        x_bounds = _axis_bounds_by_count(width, columns)
+        y_bounds = _axis_bounds_by_count(height, rows)
+    else:
+        if direction == 'vertical':
+            block_width = _parse_positive_int(form.get('block_width'), 'Lebar blok', maximum=width)
+            x_bounds = _axis_bounds_by_size(width, block_width)
+            y_bounds = [0, height]
+        elif direction == 'horizontal':
+            block_height = _parse_positive_int(form.get('block_height'), 'Tinggi blok', maximum=height)
+            x_bounds = [0, width]
+            y_bounds = _axis_bounds_by_size(height, block_height)
+        else:
+            block_width = _parse_positive_int(form.get('block_width'), 'Lebar blok', maximum=width)
+            block_height = _parse_positive_int(form.get('block_height'), 'Tinggi blok', maximum=height)
+            x_bounds = _axis_bounds_by_size(width, block_width)
+            y_bounds = _axis_bounds_by_size(height, block_height)
+
+    total = (len(x_bounds) - 1) * (len(y_bounds) - 1)
+    if total < 2:
+        raise ImageSplitterError('Pengaturan tersebut hanya menghasilkan satu blok.')
+    if total > 64:
+        raise ImageSplitterError('Maksimal 64 blok dalam sekali proses.')
+
+    boxes = []
+    for row_index in range(len(y_bounds) - 1):
+        for column_index in range(len(x_bounds) - 1):
+            boxes.append({
+                'box': (
+                    x_bounds[column_index],
+                    y_bounds[row_index],
+                    x_bounds[column_index + 1],
+                    y_bounds[row_index + 1]
+                ),
+                'row': row_index + 1,
+                'column': column_index + 1
+            })
+    return boxes
+
+
+def split_image_with_pillow(file_storage, form):
+    filename = secure_filename(file_storage.filename or 'image') or 'image'
+    image_bytes = file_storage.read()
+    if not image_bytes:
+        raise ImageSplitterError('File gambar kosong atau tidak dapat dibaca.')
+    if len(image_bytes) > 20 * 1024 * 1024:
+        raise ImageSplitterError('Ukuran gambar maksimal 20 MB.')
+
+    try:
+        with Image.open(BytesIO(image_bytes)) as source:
+            image = ImageOps.exif_transpose(source)
+            image.load()
+            icc_profile = image.info.get('icc_profile')
+            if image.mode == 'P' and 'transparency' in image.info:
+                image = image.convert('RGBA')
+            elif image.mode not in {'1', 'L', 'LA', 'P', 'RGB', 'RGBA'}:
+                image = image.convert('RGBA' if 'A' in image.getbands() else 'RGB')
+            boxes = build_image_split_boxes(image.width, image.height, form)
+            stem = Path(filename).stem or 'image'
+            pieces = []
+
+            for item in boxes:
+                crop = image.crop(item['box'])
+                output = BytesIO()
+                save_options = {'format': 'PNG', 'compress_level': 0, 'optimize': False}
+                if icc_profile:
+                    save_options['icc_profile'] = icc_profile
+                crop.save(output, **save_options)
+                pieces.append({
+                    'filename': f"{stem}-r{item['row']:02d}-c{item['column']:02d}.png",
+                    'bytes': output.getvalue(),
+                    'row': item['row'],
+                    'column': item['column'],
+                    'width': crop.width,
+                    'height': crop.height
+                })
+            return pieces, stem
+    except UnidentifiedImageError as exc:
+        raise ImageSplitterError('File tidak dikenali sebagai gambar yang valid.') from exc
+    except ImageSplitterError:
+        raise
+    except Exception as exc:
+        raise ImageSplitterError(f'Gambar gagal dipotong: {type(exc).__name__}.') from exc
+
+
+def make_image_split_zip(pieces, stem):
+    output = BytesIO()
+    with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_STORED) as archive:
+        for piece in pieces:
+            archive.writestr(piece['filename'], piece['bytes'])
+    output.seek(0)
+    return output, f'{stem}-split.zip'
+
+
+def store_image_split_session(pieces, stem):
+    token = uuid.uuid4().hex
+    now = datetime.utcnow()
+    expires_at = now + timedelta(hours=get_image_split_ttl_hours())
+    items = []
+    stored_ids = []
+
+    try:
+        for piece in pieces:
+            file_id = split_fs.put(
+                piece['bytes'],
+                filename=piece['filename'],
+                content_type='image/png',
+                metadata={'token': token, 'expires_at': expires_at}
+            )
+            stored_ids.append(file_id)
+            items.append({
+                'file_id': file_id,
+                'filename': piece['filename'],
+                'row': piece['row'],
+                'column': piece['column'],
+                'width': piece['width'],
+                'height': piece['height']
+            })
+
+        db.image_split_sessions.insert_one({
+            'token': token,
+            'stem': stem,
+            'items': items,
+            'created_at': now,
+            'expires_at': expires_at
+        })
+    except Exception:
+        for file_id in stored_ids:
+            try:
+                split_fs.delete(file_id)
+            except Exception:
+                pass
+        raise
+
+    return token
+
+
+def get_active_image_split_session(token):
+    session_doc = db.image_split_sessions.find_one({'token': token})
+    if not session_doc:
+        return None
+    if session_doc.get('expires_at') and session_doc['expires_at'] <= datetime.utcnow():
+        cleanup_expired_image_splits()
+        return None
+    return session_doc
+
+
+@app.route('/image-splitter', methods=['GET', 'POST'])
+def image_splitter():
+    cleanup_expired_image_splits()
+    error = ''
+    form_values = {
+        'direction': 'vertical',
+        'split_by': 'quantity',
+        'quantity': '2',
+        'columns': '2',
+        'rows': '2',
+        'block_width': '500',
+        'block_height': '500',
+        'output_mode': 'zip'
+    }
+
+    if request.method == 'POST':
+        form_values.update({key: request.form.get(key, form_values[key]) for key in form_values})
+        file = request.files.get('image')
+        if not file or not file.filename:
+            error = 'Silakan pilih gambar terlebih dahulu.'
+        else:
+            try:
+                pieces, stem = split_image_with_pillow(file, request.form)
+                if request.form.get('output_mode') == 'individual':
+                    token = store_image_split_session(pieces, stem)
+                    return redirect(url_for('image_splitter_result', token=token))
+
+                zip_buffer, zip_name = make_image_split_zip(pieces, stem)
+                return send_file(
+                    zip_buffer,
+                    mimetype='application/zip',
+                    as_attachment=True,
+                    download_name=zip_name,
+                    max_age=0
+                )
+            except ImageSplitterError as exc:
+                error = str(exc)
+            except Exception:
+                app.logger.exception('Image Splitter gagal')
+                error = 'Image Splitter gagal memproses gambar.'
+
+    return render_template(
+        'image_splitter.html',
+        error=error,
+        form_values=form_values,
+        ttl_hours=get_image_split_ttl_hours()
+    )
+
+
+@app.route('/image-splitter/result/<token>')
+def image_splitter_result(token):
+    cleanup_expired_image_splits()
+    session_doc = get_active_image_split_session(token)
+    if not session_doc:
+        abort(404)
+    return render_template('image_splitter_result.html', split_session=session_doc)
+
+
+@app.route('/image-splitter/file/<token>/<file_id>')
+def image_splitter_file(token, file_id):
+    session_doc = get_active_image_split_session(token)
+    if not session_doc:
+        abort(404)
+    try:
+        object_id = ObjectId(file_id)
+    except Exception:
+        abort(404)
+
+    allowed = next((item for item in session_doc.get('items', []) if item.get('file_id') == object_id), None)
+    if not allowed:
+        abort(404)
+
+    try:
+        grid_file = split_fs.get(object_id)
+    except Exception:
+        abort(404)
+
+    inline = request.args.get('view') == '1'
+    return send_file(
+        BytesIO(grid_file.read()),
+        mimetype='image/png',
+        as_attachment=not inline,
+        download_name=allowed.get('filename') or 'split.png',
+        max_age=0
+    )
+
+
+@app.route('/image-splitter/zip/<token>')
+def image_splitter_zip(token):
+    session_doc = get_active_image_split_session(token)
+    if not session_doc:
+        abort(404)
+
+    pieces = []
+    for item in session_doc.get('items', []):
+        try:
+            grid_file = split_fs.get(item['file_id'])
+            pieces.append({'filename': item['filename'], 'bytes': grid_file.read()})
+        except Exception:
+            abort(404)
+
+    zip_buffer, zip_name = make_image_split_zip(pieces, session_doc.get('stem') or 'image')
+    return send_file(
+        zip_buffer,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=zip_name,
+        max_age=0
     )
 
 if __name__ == '__main__':
