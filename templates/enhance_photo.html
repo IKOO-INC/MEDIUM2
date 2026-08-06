@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% block title %}Enhance Photo{% endblock %}
+{% block breadcrumb %}Tools / Enhance Photo{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-text">
+        <span class="eyebrow">Tools</span>
+        <h1 class="hero-title">Enhance <span class="accent">Photo</span></h1>
+        <p class="hero-sub">Perjelas detail dan resolusi foto menggunakan PicWish Sync. Hasil langsung dikirim sebagai file download.</p>
+    </div>
+</section>
+
+{% if error %}
+<div class="alert danger section-gap">{{ error }}</div>
+{% endif %}
+
+<section class="grid ytmp3-layout section-gap">
+    <section class="col-8 card">
+        <div class="card-head">
+            <div class="card-title-wrap">
+                <span class="eyebrow">Photo Enhancer</span>
+                <h2 class="card-title">Tingkatkan Kualitas Foto</h2>
+            </div>
+            <span class="badge info dot">PicWish</span>
+        </div>
+
+        <form method="POST" enctype="multipart/form-data" class="remove-bg-form" id="enhancePhotoForm">
+            <label class="remove-bg-drop" for="enhancePhotoFile">
+                <input id="enhancePhotoFile" name="image" type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.jfif" required>
+                <span class="remove-bg-drop-icon">
+                    <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>
+                </span>
+                <strong id="enhancePhotoFileName">Klik untuk memilih gambar</strong>
+                <span>JPG, PNG, WEBP, BMP, TIFF · maksimal 20 MB</span>
+            </label>
+
+            <div class="form-grid finance-form-grid">
+                <div class="field">
+                    <label class="field-label" for="enhanceType">Jenis Peningkatan</label>
+                    <select class="select" id="enhanceType" name="type">
+                        <option value="clean">Gambar umum / produk</option>
+                        <option value="face">Wajah / portrait</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label class="field-label" for="scaleFactor">Resolusi Output</label>
+                    <select class="select" id="scaleFactor" name="scale_factor">
+                        <option value="">Otomatis</option>
+                        <option value="1">Pertahankan ukuran</option>
+                        <option value="2">Perbesar 2×</option>
+                        <option value="4">Perbesar 4×</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label class="field-label" for="enhanceFormat">Format Hasil</label>
+                    <select class="select" id="enhanceFormat" name="format">
+                        <option value="jpg">JPG</option>
+                        <option value="png">PNG</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <span class="spacer"></span>
+                <button class="btn btn--primary" type="submit" id="enhancePhotoSubmit">
+                    <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+                    <span>Enhance & Download</span>
+                </button>
+            </div>
+        </form>
+    </section>
+
+    <aside class="col-4 card tool-side-card">
+        <div class="card-head">
+            <div class="card-title-wrap"><span class="eyebrow">Provider</span><h2 class="card-title">PicWish</h2></div>
+            <span class="badge success dot">{{ picwish_key_count }} key</span>
+        </div>
+        <div class="provider-stack">
+            <div class="provider-row">
+                <div class="provider-dot">P</div>
+                <div><strong>Photo Enhancement Sync</strong><span>Clean / face · scale 1×, 2×, atau 4×</span></div>
+            </div>
+        </div>
+        <div class="tool-note">
+            <strong>API key yang sama</strong>
+            <p>Tool ini memakai array <code>PICH</code> yang sama dengan Remove BG. Key dicoba berurutan dan berhenti ketika satu key berhasil.</p>
+        </div>
+        <div class="tool-note">
+            <strong>Download langsung</strong>
+            <p>Hasil PicWish langsung diambil oleh server lalu dikirim sebagai attachment, tanpa disimpan di halaman.</p>
+        </div>
+    </aside>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(() => {
+    const fileInput = document.getElementById('enhancePhotoFile');
+    const fileName = document.getElementById('enhancePhotoFileName');
+    const form = document.getElementById('enhancePhotoForm');
+    const button = document.getElementById('enhancePhotoSubmit');
+    fileInput?.addEventListener('change', () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (file) fileName.textContent = file.name;
+    });
+    form?.addEventListener('submit', () => {
+        button.disabled = true;
+        button.classList.add('is-loading');
+        const label = button.querySelector('span');
+        if (label) label.textContent = 'Memproses...';
+        window.setTimeout(() => {
+            button.disabled = false;
+            button.classList.remove('is-loading');
+            if (label) label.textContent = 'Enhance & Download';
+        }, 120000);
+    });
+})();
+</script>
+{% endblock %}
