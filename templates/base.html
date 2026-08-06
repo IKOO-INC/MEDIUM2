@@ -92,6 +92,21 @@
                 <span>Remove BG</span>
                 <span class="nav-badge">AI</span>
             </a>
+            <a class="nav-link {% if request.endpoint == 'enhance_photo' %}is-active{% endif %}" href="{{ url_for('enhance_photo') }}">
+                <svg viewBox="0 0 24 24"><path d="m12 3 1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7L12 3Z"/><path d="m19 14 .9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9L19 14Z"/></svg>
+                <span>Enhance Photo</span>
+                <span class="nav-badge">AI</span>
+            </a>
+            <a class="nav-link {% if request.endpoint in ['fyy_share', 'fyy_share_receive', 'fyy_share_status', 'fyy_share_upload', 'delete_fyy_share_file', 'fyy_share_transfer_progress', 'fyy_share_qr', 'fyy_share_download', 'delete_fyy_share'] %}is-active{% endif %}" href="{{ url_for('fyy_share') }}">
+                <svg viewBox="0 0 24 24"><path d="M12 5v10M8 9l4-4 4 4"/><rect x="3" y="15" width="18" height="6" rx="2"/><path d="M7 18h.01"/></svg>
+                <span>FYY Share</span>
+                <span class="nav-badge">LAN</span>
+            </a>
+            <a class="nav-link {% if request.endpoint in ['image_splitter', 'image_splitter_result', 'image_splitter_file', 'image_splitter_zip'] %}is-active{% endif %}" href="{{ url_for('image_splitter') }}">
+                <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="m8.7 7.5 11.3 6.5M8.7 16.5 20 10"/></svg>
+                <span>Image Splitter</span>
+                <span class="nav-badge">IMG</span>
+            </a>
             <a class="nav-link {% if request.endpoint == 'tiktok_downloader' %}is-active{% endif %}" href="{{ url_for('tiktok_downloader') }}">
                 <svg viewBox="0 0 24 24"><path d="M15 4v10.5a4.5 4.5 0 1 1-4-4.47"/><path d="M15 4c1.2 2.7 3.1 4.2 6 4.5"/></svg>
                 <span>TikTok Downloader</span>
