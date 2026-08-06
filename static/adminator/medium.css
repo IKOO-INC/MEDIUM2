@@ -488,3 +488,167 @@ body.has-drawer-open .drawer-backdrop { opacity: 1; pointer-events: auto; }
     .remove-bg-result-actions { align-items: stretch; flex-direction: column; }
     .remove-bg-result-actions .btn { justify-content: center; width: 100%; }
 }
+
+/* =========================================================
+   ENHANCE PHOTO, FYY SHARE & IMAGE SPLITTER
+   Semua selector diprefix agar tidak mengubah halaman lain.
+   ========================================================= */
+.tool-icon--enhance { background: var(--purple-soft); color: var(--purple); }
+.tool-icon--share { background: var(--success-soft); color: var(--success); }
+.tool-icon--split { background: var(--warning-soft); color: var(--warning); }
+
+.share-result { align-items: center; display: grid; gap: 24px; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); }
+.share-qr-wrap { align-items: center; aspect-ratio: 1 / 1; background: #fff; border: 1px solid var(--border); border-radius: 16px; display: flex; justify-content: center; padding: 16px; }
+.share-qr-wrap img { display: block; height: auto; max-width: 100%; width: 100%; }
+.share-result-info { min-width: 0; }
+.share-result-info h3 { color: var(--t-base); font-family: "Inter Tight", Inter, sans-serif; font-size: 20px; margin: 12px 0 5px; overflow-wrap: anywhere; }
+.share-result-info > p { color: var(--t-muted); font-size: 11px; margin: 0 0 17px; }
+.share-link-row { align-items: center; display: grid; gap: 9px; grid-template-columns: minmax(0, 1fr) auto; }
+.share-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 9px; margin-top: 18px; }
+.share-actions form { margin: 0; }
+.share-receive-card { align-items: center; display: grid; gap: 20px; grid-template-columns: 64px minmax(0, 1fr) auto; margin-left: auto; margin-right: auto; max-width: 820px; }
+.share-file-icon { background: var(--primary-soft); border-radius: 16px; color: var(--primary); display: grid; height: 64px; place-items: center; width: 64px; }
+.share-file-icon svg { fill: none; height: 30px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; width: 30px; }
+.share-receive-meta { min-width: 0; }
+.share-receive-meta h2 { color: var(--t-base); font-family: "Inter Tight", Inter, sans-serif; font-size: 21px; margin: 10px 0 5px; overflow-wrap: anywhere; }
+.share-receive-meta p { color: var(--t-muted); font-size: 11px; margin: 0; }
+
+.splitter-form { display: grid; gap: 17px; }
+.splitter-direction-fieldset { border: 0; margin: 0; min-width: 0; padding: 0; }
+.splitter-direction-grid { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.splitter-direction-option { background: var(--bg-muted); border: 1px solid var(--border); border-radius: 12px; cursor: pointer; display: grid; gap: 5px; min-width: 0; padding: 13px; position: relative; transition: border-color .18s ease, background .18s ease, transform .18s ease; }
+.splitter-direction-option:hover { border-color: var(--primary); transform: translateY(-1px); }
+.splitter-direction-option:has(input:checked) { background: var(--primary-soft); border-color: var(--primary); }
+.splitter-direction-option input { height: 1px; opacity: 0; position: absolute; width: 1px; }
+.splitter-direction-icon { color: var(--primary); display: grid; height: 28px; place-items: center; width: 28px; }
+.splitter-direction-icon svg { fill: none; height: 24px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; width: 24px; }
+.splitter-direction-option strong { color: var(--t-base); font-size: 11.5px; }
+.splitter-direction-option small { color: var(--t-light); font-size: 9.5px; line-height: 1.45; }
+.splitter-field[hidden] { display: none !important; }
+.split-result-grid { display: grid; gap: 14px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.split-result-card { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.split-result-preview { align-items: center; aspect-ratio: 1 / 1; background-color: #eef1f5; background-image: linear-gradient(45deg, #d9dde4 25%, transparent 25%), linear-gradient(-45deg, #d9dde4 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #d9dde4 75%), linear-gradient(-45deg, transparent 75%, #d9dde4 75%); background-position: 0 0, 0 8px, 8px -8px, -8px 0; background-size: 16px 16px; border: 1px solid var(--border); border-radius: 11px; display: flex; justify-content: center; overflow: hidden; }
+.split-result-preview img { display: block; height: 100%; object-fit: contain; width: 100%; }
+.split-result-meta { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.split-result-meta strong { color: var(--t-base); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.split-result-meta span { color: var(--t-light); font-size: 9.5px; }
+
+@media (max-width: 900px) {
+    .share-result { grid-template-columns: 190px minmax(0, 1fr); }
+    .split-result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+    .share-result { grid-template-columns: 1fr; }
+    .share-qr-wrap { margin: 0 auto; max-width: 240px; width: 100%; }
+    .share-link-row { grid-template-columns: 1fr; }
+    .share-link-row .btn { justify-content: center; width: 100%; }
+    .share-actions { align-items: stretch; flex-direction: column; }
+    .share-actions .btn, .share-actions form, .share-actions form .btn { justify-content: center; width: 100%; }
+    .share-receive-card { align-items: stretch; grid-template-columns: 1fr; text-align: center; }
+    .share-file-icon { margin: 0 auto; }
+    .share-receive-card .btn { justify-content: center; width: 100%; }
+    .splitter-direction-grid, .split-result-grid { grid-template-columns: 1fr; }
+}
+
+/* =========================================================
+   FYY SHARE LAN — BIDIRECTIONAL
+   Seluruh selector diprefix agar tidak memengaruhi halaman lain.
+   ========================================================= */
+.lan-share-layout { align-items: start; }
+.lan-share-cloud-warning { margin-left: auto; margin-right: auto; max-width: 850px; }
+.lan-share-pair-card, .lan-transfer-card { min-width: 0; }
+.lan-text-success { color: var(--success) !important; }
+.lan-text-warning { color: var(--warning) !important; }
+.tool-inline-note { color: var(--t-light); font-size: 10px; line-height: 1.5; max-width: 330px; }
+
+.lan-room-summary { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; display: grid; gap: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: hidden; }
+.lan-room-summary-item { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 14px 17px; }
+.lan-room-summary-item + .lan-room-summary-item { border-left: 1px solid var(--border); }
+.lan-room-summary-item span { color: var(--t-light); font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.lan-room-summary-item strong { color: var(--t-base); font-size: 11.5px; overflow-wrap: anywhere; }
+
+.lan-transfer-section { display: grid; gap: 14px; }
+.lan-transfer-heading { align-items: center; display: flex; gap: 14px; justify-content: space-between; }
+.lan-transfer-heading h3 { color: var(--t-base); font-family: "Inter Tight", Inter, sans-serif; font-size: 16px; margin: 4px 0 0; }
+.lan-transfer-heading .badge.neutral { background: var(--bg-muted); color: var(--t-muted); }
+.lan-transfer-divider { background: var(--border); height: 1px; margin: 23px 0; width: 100%; }
+.lan-file-drop { min-height: 150px; }
+
+.lan-byte-progress { background: var(--bg-muted); border: 1px solid var(--border); border-radius: 11px; display: grid; gap: 7px; padding: 11px 12px; }
+.lan-byte-progress[hidden] { display: none !important; }
+.lan-byte-progress--compact { background: transparent; border: 0; padding: 0; }
+.lan-byte-progress-head { align-items: center; display: flex; gap: 12px; justify-content: space-between; }
+.lan-byte-progress-head span { color: var(--t-muted); font-size: 10px; }
+.lan-byte-progress-head strong { color: var(--t-base); font-size: 10px; font-variant-numeric: tabular-nums; }
+.lan-byte-progress small { color: var(--t-light); font-size: 9.5px; font-variant-numeric: tabular-nums; }
+.lan-byte-track { background: color-mix(in srgb, var(--border) 75%, transparent); border-radius: 999px; height: 6px; overflow: hidden; width: 100%; }
+.lan-byte-track span { background: linear-gradient(90deg, var(--primary), var(--success)); border-radius: inherit; display: block; height: 100%; transition: width .18s linear; width: 0; }
+
+.lan-file-panel { align-items: start; border: 1px solid var(--border); border-radius: 13px; display: grid; gap: 13px; grid-template-columns: 48px minmax(0, 1fr); padding: 13px; }
+.lan-file-panel[hidden] { display: none !important; }
+.lan-file-panel--outgoing { background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 24%, var(--border)); }
+.lan-file-panel--incoming { background: var(--success-soft); border-color: color-mix(in srgb, var(--success) 24%, var(--border)); }
+.lan-file-panel-icon { align-items: center; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; color: var(--primary); display: flex; height: 48px; justify-content: center; width: 48px; }
+.lan-file-panel--incoming .lan-file-panel-icon { color: var(--success); }
+.lan-file-panel-icon svg { fill: none; height: 24px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; width: 24px; }
+.lan-file-panel-body { display: grid; gap: 11px; min-width: 0; }
+.lan-file-panel-top { align-items: start; display: flex; gap: 12px; justify-content: space-between; min-width: 0; }
+.lan-file-panel-top > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.lan-file-panel-top strong { color: var(--t-base); font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lan-file-panel .btn--icon { border-radius: 9px; flex: 0 0 auto; height: 32px; min-height: 32px; padding: 0; width: 32px; }
+.lan-file-panel .btn--icon svg { height: 15px; width: 15px; }
+.lan-file-panel .btn--danger-soft { background: var(--danger-soft); color: var(--danger); }
+.lan-file-panel .btn--danger-soft:hover { background: var(--danger); color: #fff; }
+.lan-receive-button { justify-self: start; }
+
+.lan-incoming-empty { align-items: center; background: var(--bg-muted); border: 1px dashed var(--border); border-radius: 13px; display: flex; gap: 13px; min-height: 92px; padding: 15px; }
+.lan-incoming-empty[hidden] { display: none !important; }
+.lan-incoming-empty-icon { align-items: center; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; color: var(--t-light); display: flex; flex: 0 0 auto; height: 46px; justify-content: center; width: 46px; }
+.lan-incoming-empty-icon svg { fill: none; height: 23px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; width: 23px; }
+.lan-incoming-empty > div { display: flex; flex-direction: column; gap: 4px; }
+.lan-incoming-empty strong { color: var(--t-base); font-size: 11.5px; }
+.lan-incoming-empty span { color: var(--t-muted); font-size: 9.5px; }
+
+.lan-transfer-error { margin-top: 18px; white-space: pre-line; }
+.lan-transfer-error[hidden] { display: none !important; }
+.lan-share-qr-wrap { margin: 0 auto 15px; max-width: 250px; width: 100%; }
+.lan-share-connection-state { align-items: center; background: var(--warning-soft); border: 1px solid color-mix(in srgb, var(--warning) 25%, transparent); border-radius: 11px; display: flex; gap: 11px; margin: 17px 0; padding: 11px 12px; }
+.lan-share-connection-state.is-connected { background: var(--success-soft); border-color: color-mix(in srgb, var(--success) 25%, transparent); }
+.lan-share-pulse { animation: lan-share-pulse 1.7s infinite; background: var(--warning); border-radius: 50%; box-shadow: 0 0 0 0 color-mix(in srgb, var(--warning) 45%, transparent); flex: 0 0 auto; height: 9px; width: 9px; }
+.lan-share-connection-state.is-connected .lan-share-pulse { background: var(--success); box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 45%, transparent); }
+.lan-share-connection-state > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lan-share-connection-state strong { color: var(--t-base); font-size: 11px; }
+.lan-share-connection-state small { color: var(--t-muted); font-size: 9.5px; overflow-wrap: anywhere; }
+.lan-share-expiry { color: var(--t-light); font-size: 9.5px; margin: 13px 0 0; text-align: center; }
+.lan-full-button { justify-content: center; margin-top: 17px; width: 100%; }
+
+.lan-connected-visual { align-items: center; display: grid; gap: 10px; grid-template-columns: 58px minmax(50px, 1fr) 58px; margin: 16px auto 7px; max-width: 300px; }
+.lan-connected-device { align-items: center; background: var(--primary-soft); border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border)); border-radius: 16px; color: var(--primary); display: flex; height: 58px; justify-content: center; }
+.lan-connected-device:last-child { background: var(--success-soft); border-color: color-mix(in srgb, var(--success) 22%, var(--border)); color: var(--success); }
+.lan-connected-device svg { fill: none; height: 27px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; width: 27px; }
+.lan-connected-line { align-items: center; display: flex; gap: 7px; justify-content: center; }
+.lan-connected-line i { animation: lan-dot-travel 1.25s infinite ease-in-out; background: var(--primary); border-radius: 50%; height: 6px; opacity: .25; width: 6px; }
+.lan-connected-line i:nth-child(2) { animation-delay: .16s; }
+.lan-connected-line i:nth-child(3) { animation-delay: .32s; }
+
+.btn.is-disabled { opacity: .58; pointer-events: none; }
+@keyframes lan-share-pulse { 0% { box-shadow: 0 0 0 0 currentColor; } 70% { box-shadow: 0 0 0 8px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+@keyframes lan-dot-travel { 0%, 100% { opacity: .2; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.15); } }
+
+@media (max-width: 900px) {
+    .lan-room-summary { grid-template-columns: 1fr; }
+    .lan-room-summary-item + .lan-room-summary-item { border-left: 0; border-top: 1px solid var(--border); }
+}
+
+@media (max-width: 640px) {
+    .tool-inline-note { max-width: none; }
+    .lan-transfer-heading { align-items: flex-start; }
+    .lan-file-panel { grid-template-columns: 42px minmax(0, 1fr); padding: 11px; }
+    .lan-file-panel-icon { height: 42px; width: 42px; }
+    .lan-file-panel-top { gap: 8px; }
+    .lan-receive-button { justify-content: center; width: 100%; }
+    .lan-incoming-empty { align-items: flex-start; }
+    .lan-connected-visual { grid-template-columns: 50px minmax(45px, 1fr) 50px; }
+    .lan-connected-device { height: 50px; }
+}
