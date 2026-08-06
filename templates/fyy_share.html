@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}FYY Share LAN{% endblock %}
+{% block breadcrumb %}Tools / FYY Share LAN{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-text">
+        <span class="eyebrow">Tools</span>
+        <h1 class="hero-title">FYY <span class="accent">Share LAN</span></h1>
+        <p class="hero-sub">Transfer file dua arah antardevice melalui Wi-Fi yang sama, lengkap dengan status koneksi dan penghitung byte real-time.</p>
+    </div>
+</section>
+
+{% if not local_runtime %}
+<section class="card section-gap lan-share-cloud-warning">
+    <div class="card-head">
+        <div class="card-title-wrap">
+            <span class="eyebrow">Local only</span>
+            <h2 class="card-title">Jalankan project di laptop pengirim</h2>
+        </div>
+        <span class="badge warning dot">Vercel tidak bisa LAN</span>
+    </div>
+    <div class="tool-note">
+        <strong>FYY Share LAN membutuhkan server lokal</strong>
+        <p>Jalankan Flask dengan <code>python app.py</code>. Laptop dan HP harus berada di Wi-Fi yang sama, lalu izinkan Python pada Windows Firewall untuk jaringan Private.</p>
+    </div>
+    <div class="provider-stack">
+        <div class="provider-row"><div class="provider-dot">1</div><div><strong>Jalankan Flask</strong><span>Server harus mendengarkan pada <code>0.0.0.0:5000</code>.</span></div></div>
+        <div class="provider-row"><div class="provider-dot">2</div><div><strong>Buka melalui laptop</strong><span>Masuk ke FYY Share dan tampilkan QR pairing.</span></div></div>
+        <div class="provider-row"><div class="provider-dot">3</div><div><strong>Scan dari perangkat kedua</strong><span>Kedua perangkat kemudian dapat saling mengirim file.</span></div></div>
+    </div>
+</section>
+{% else %}
+{% include '_fyy_share_room.html' %}
+{% endif %}
+{% endblock %}

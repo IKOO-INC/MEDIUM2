@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}Hasil Image Splitter{% endblock %}
+{% block breadcrumb %}Tools / Image Splitter / Result{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-text">
+        <span class="eyebrow">Image Splitter</span>
+        <h1 class="hero-title">Hasil <span class="accent">Pemotongan</span></h1>
+        <p class="hero-sub">{{ split_session.items|length }} blok PNG siap di-download satu per satu atau sekaligus dalam ZIP.</p>
+    </div>
+    <div class="hero-actions">
+        <a class="btn btn--ghost" href="{{ url_for('image_splitter') }}">Split Gambar Baru</a>
+        <a class="btn btn--primary" href="{{ url_for('image_splitter_zip', token=split_session.token) }}">
+            <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+            Download Semua ZIP
+        </a>
+    </div>
+</section>
+
+<section class="split-result-grid section-gap">
+    {% for item in split_session.items %}
+    <article class="card split-result-card">
+        <div class="split-result-preview">
+            <img src="{{ url_for('image_splitter_file', token=split_session.token, file_id=item.file_id, view=1) }}" alt="{{ item.filename }}" loading="lazy">
+        </div>
+        <div class="split-result-meta">
+            <strong>{{ item.filename }}</strong>
+            <span>{{ item.width }} × {{ item.height }} px · blok {{ loop.index }}</span>
+        </div>
+        <a class="btn btn--ghost btn--full" href="{{ url_for('image_splitter_file', token=split_session.token, file_id=item.file_id) }}">
+            <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+            Download PNG
+        </a>
+    </article>
+    {% endfor %}
+</section>
+{% endblock %}

@@ -1,0 +1,587 @@
+{% set own_label = 'Perangkat utama' if role == 'host' else 'Perangkat kedua' %}
+{% set other_label = 'Perangkat kedua' if role == 'host' else 'Perangkat utama' %}
+
+<section class="lan-room-summary section-gap">
+    <div class="lan-room-summary-item">
+        <span>Perangkat ini</span>
+        <strong>{{ own_label }}</strong>
+    </div>
+    <div class="lan-room-summary-item">
+        <span>Status {{ other_label|lower }}</span>
+        <strong id="lanOtherSummary" class="{% if other_online %}lan-text-success{% else %}lan-text-warning{% endif %}">
+            {% if other_online %}Tersambung{% else %}Menunggu koneksi{% endif %}
+        </strong>
+    </div>
+    <div class="lan-room-summary-item">
+        <span>Server lokal</span>
+        <strong>http://{{ lan_ip }}{% if lan_port != 80 %}:{{ lan_port }}{% endif %}</strong>
+    </div>
+</section>
+
+<section class="grid ytmp3-layout section-gap lan-share-layout">
+    <section class="col-7 card lan-transfer-card">
+        <div class="card-head">
+            <div class="card-title-wrap">
+                <span class="eyebrow">Kirim & terima</span>
+                <h2 class="card-title">Transfer dua arah</h2>
+            </div>
+            <span id="lanConnectionBadge" class="badge {% if other_online %}success{% else %}warning{% endif %} dot">
+                {% if other_online %}Terhubung{% else %}Menunggu perangkat{% endif %}
+            </span>
+        </div>
+
+        {% if error %}
+        <div class="alert danger">{{ error }}</div>
+        {% endif %}
+
+        <div class="lan-transfer-section">
+            <div class="lan-transfer-heading">
+                <div>
+                    <span class="eyebrow">Kirim file</span>
+                    <h3>Pilih file dari {{ own_label|lower }}</h3>
+                </div>
+                <span class="badge neutral">Maks. {{ max_mb }} MB</span>
+            </div>
+
+            <form id="lanUploadForm" class="remove-bg-form" action="{{ url_for('fyy_share_upload', token=share.token, role=role) }}" method="POST" enctype="multipart/form-data">
+                <label class="remove-bg-drop lan-file-drop" for="lanFileInput">
+                    <input id="lanFileInput" name="file" type="file" required>
+                    <span class="remove-bg-drop-icon">
+                        <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>
+                    </span>
+                    <strong id="lanFileName">Klik untuk memilih file</strong>
+                    <span id="lanFileHint">File tetap berada di jaringan Wi-Fi lokal</span>
+                </label>
+
+                <div id="lanUploadProgress" class="lan-byte-progress" hidden>
+                    <div class="lan-byte-progress-head">
+                        <span id="lanUploadStatus">Menyiapkan file...</span>
+                        <strong id="lanUploadPercent">0%</strong>
+                    </div>
+                    <div class="lan-byte-track"><span id="lanUploadBar"></span></div>
+                    <small id="lanUploadBytes">0 B / 0 B</small>
+                </div>
+
+                <div class="form-actions">
+                    <span class="tool-inline-note">Sesudah siap, {{ other_label|lower }} dapat menerima file secara langsung.</span>
+                    <button id="lanUploadButton" class="btn btn--primary" type="submit">
+                        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7-7 7 7"/></svg>
+                        <span>Kirim File</span>
+                    </button>
+                </div>
+            </form>
+
+            <div id="lanOwnFile" class="lan-file-panel lan-file-panel--outgoing" {% if own_file.state != 'ready' %}hidden{% endif %}>
+                <div class="lan-file-panel-icon">
+                    <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>
+                </div>
+                <div class="lan-file-panel-body">
+                    <div class="lan-file-panel-top">
+                        <div>
+                            <span class="eyebrow">File yang Anda kirim</span>
+                            <strong id="lanOwnFilename">{{ own_file.filename }}</strong>
+                        </div>
+                        <button id="lanDeleteOwnFile" class="btn btn--icon btn--danger-soft" type="button" aria-label="Hapus file">
+                            <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+                        </button>
+                    </div>
+                    <div class="lan-byte-progress lan-byte-progress--compact">
+                        <div class="lan-byte-progress-head">
+                            <span id="lanOwnTransferStatus">Siap diterima</span>
+                            <strong id="lanOwnTransferPercent">0%</strong>
+                        </div>
+                        <div class="lan-byte-track"><span id="lanOwnTransferBar"></span></div>
+                        <small id="lanOwnFileBytes">{{ own_file.bytes or 0 }} byte</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="lan-transfer-divider"></div>
+
+        <div class="lan-transfer-section">
+            <div class="lan-transfer-heading">
+                <div>
+                    <span class="eyebrow">Terima file</span>
+                    <h3>File dari {{ other_label|lower }}</h3>
+                </div>
+                <span id="lanIncomingBadge" class="badge warning dot">Menunggu file</span>
+            </div>
+
+            <div id="lanIncomingEmpty" class="lan-incoming-empty" {% if incoming_file.state == 'ready' %}hidden{% endif %}>
+                <span class="lan-incoming-empty-icon">
+                    <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+                </span>
+                <div>
+                    <strong>Belum ada file masuk</strong>
+                    <span>Halaman akan memperbarui status secara otomatis.</span>
+                </div>
+            </div>
+
+            <div id="lanIncomingFile" class="lan-file-panel lan-file-panel--incoming" {% if incoming_file.state != 'ready' %}hidden{% endif %}>
+                <div class="lan-file-panel-icon">
+                    <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>
+                </div>
+                <div class="lan-file-panel-body">
+                    <div class="lan-file-panel-top">
+                        <div>
+                            <span class="eyebrow">Siap diterima</span>
+                            <strong id="lanIncomingFilename">{{ incoming_file.filename }}</strong>
+                        </div>
+                        <span id="lanIncomingSize" class="badge success">0 B</span>
+                    </div>
+                    <div id="lanDownloadProgress" class="lan-byte-progress lan-byte-progress--compact" hidden>
+                        <div class="lan-byte-progress-head">
+                            <span id="lanDownloadStatus">Menerima file...</span>
+                            <strong id="lanDownloadPercent">0%</strong>
+                        </div>
+                        <div class="lan-byte-track"><span id="lanDownloadBar"></span></div>
+                        <small id="lanDownloadBytes">0 B / 0 B</small>
+                    </div>
+                    <button id="lanReceiveButton" class="btn btn--primary lan-receive-button" type="button">
+                        <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+                        <span>Terima File</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="lanTransferError" class="alert danger lan-transfer-error" hidden></div>
+    </section>
+
+    <aside class="col-5 card tool-side-card lan-share-pair-card">
+        {% if role == 'host' %}
+        <div class="card-head">
+            <div class="card-title-wrap">
+                <span class="eyebrow">Pairing</span>
+                <h2 class="card-title">Scan untuk terhubung</h2>
+            </div>
+            <span class="badge success dot">Wi-Fi LAN</span>
+        </div>
+
+        <div class="share-qr-wrap lan-share-qr-wrap">
+            <img src="{{ url_for('fyy_share_qr', token=share.token) }}" alt="QR FYY Share LAN">
+        </div>
+
+        <div class="field">
+            <label class="field-label" for="fyyShareUrl">Alamat pairing lokal</label>
+            <div class="share-link-row">
+                <input class="input" id="fyyShareUrl" value="{{ share_url }}" readonly>
+                <button class="btn btn--ghost" type="button" id="copyShareLink" aria-label="Salin alamat">
+                    <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    Salin
+                </button>
+            </div>
+        </div>
+        {% else %}
+        <div class="card-head">
+            <div class="card-title-wrap">
+                <span class="eyebrow">Connected</span>
+                <h2 class="card-title">FYY Share Room</h2>
+            </div>
+            <span class="badge success dot">LAN</span>
+        </div>
+        <div class="lan-connected-visual">
+            <span class="lan-connected-device">
+                <svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 18h6"/></svg>
+            </span>
+            <span class="lan-connected-line"><i></i><i></i><i></i></span>
+            <span class="lan-connected-device">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+            </span>
+        </div>
+        {% endif %}
+
+        <div id="lanOtherState" class="lan-share-connection-state {% if other_online %}is-connected{% endif %}">
+            <span class="lan-share-pulse"></span>
+            <div>
+                <strong>{% if other_online %}{{ other_label }} tersambung{% else %}Menunggu {{ other_label|lower }}{% endif %}</strong>
+                <small>{% if other_online and other_ip %}IP {{ other_ip }}{% else %}Pastikan kedua perangkat memakai Wi-Fi yang sama{% endif %}</small>
+            </div>
+        </div>
+
+        <div class="provider-stack">
+            <div class="provider-row">
+                <div class="provider-dot">↔</div>
+                <div><strong>Dua arah</strong><span>Kedua perangkat dapat mengirim dan menerima file pada sesi yang sama.</span></div>
+            </div>
+            <div class="provider-row">
+                <div class="provider-dot">B</div>
+                <div><strong>Penghitung byte</strong><span>Jumlah byte dan persentase transfer diperbarui selama proses berjalan.</span></div>
+            </div>
+            <div class="provider-row">
+                <div class="provider-dot">LAN</div>
+                <div><strong>Tanpa cloud</strong><span>File hanya melewati server Flask lokal pada jaringan Wi-Fi yang sama.</span></div>
+            </div>
+        </div>
+
+        {% if role == 'host' %}
+        <div class="share-actions">
+            <a class="btn btn--ghost" href="{{ url_for('fyy_share', new='1') }}">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                Sesi Baru
+            </a>
+            <form method="POST" action="{{ url_for('delete_fyy_share', token=share.token) }}" onsubmit="return confirm('Hapus sesi dan semua file lokal ini?')">
+                <button class="btn btn--danger" type="submit">
+                    <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+                    Hapus Sesi
+                </button>
+            </form>
+        </div>
+        {% else %}
+        <button class="btn btn--ghost lan-full-button" type="button" onclick="window.location.reload()">
+            <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
+            Segarkan Koneksi
+        </button>
+        {% endif %}
+
+        <p class="lan-share-expiry">Sesi dan file lokal dibersihkan otomatis setelah {{ ttl_minutes }} menit.</p>
+    </aside>
+</section>
+
+<script>
+(() => {
+    const role = {{ role|tojson }};
+    const otherRole = {{ other_role|tojson }};
+    const maxBytes = {{ (max_mb * 1024 * 1024)|int }};
+    const statusUrl = {{ (url_for('fyy_share_status', token=share.token) + '?role=' + role)|tojson }};
+    const uploadUrl = {{ url_for('fyy_share_upload', token=share.token, role=role)|tojson }};
+    const deleteOwnUrl = {{ url_for('delete_fyy_share_file', token=share.token, role=role)|tojson }};
+    const progressUrl = {{ url_for('fyy_share_transfer_progress', token=share.token, source_role=other_role)|tojson }};
+
+    const fileInput = document.getElementById('lanFileInput');
+    const fileName = document.getElementById('lanFileName');
+    const fileHint = document.getElementById('lanFileHint');
+    const uploadForm = document.getElementById('lanUploadForm');
+    const uploadButton = document.getElementById('lanUploadButton');
+    const uploadProgress = document.getElementById('lanUploadProgress');
+    const uploadStatus = document.getElementById('lanUploadStatus');
+    const uploadPercent = document.getElementById('lanUploadPercent');
+    const uploadBar = document.getElementById('lanUploadBar');
+    const uploadBytes = document.getElementById('lanUploadBytes');
+    const ownFilePanel = document.getElementById('lanOwnFile');
+    const ownFilename = document.getElementById('lanOwnFilename');
+    const ownFileBytes = document.getElementById('lanOwnFileBytes');
+    const ownTransferStatus = document.getElementById('lanOwnTransferStatus');
+    const ownTransferPercent = document.getElementById('lanOwnTransferPercent');
+    const ownTransferBar = document.getElementById('lanOwnTransferBar');
+    const deleteOwnButton = document.getElementById('lanDeleteOwnFile');
+    const incomingEmpty = document.getElementById('lanIncomingEmpty');
+    const incomingPanel = document.getElementById('lanIncomingFile');
+    const incomingFilename = document.getElementById('lanIncomingFilename');
+    const incomingSize = document.getElementById('lanIncomingSize');
+    const incomingBadge = document.getElementById('lanIncomingBadge');
+    const receiveButton = document.getElementById('lanReceiveButton');
+    const downloadProgress = document.getElementById('lanDownloadProgress');
+    const downloadStatus = document.getElementById('lanDownloadStatus');
+    const downloadPercent = document.getElementById('lanDownloadPercent');
+    const downloadBar = document.getElementById('lanDownloadBar');
+    const downloadBytes = document.getElementById('lanDownloadBytes');
+    const connectionBadge = document.getElementById('lanConnectionBadge');
+    const otherState = document.getElementById('lanOtherState');
+    const otherSummary = document.getElementById('lanOtherSummary');
+    const errorBox = document.getElementById('lanTransferError');
+
+    let incomingFile = null;
+    let pollBusy = false;
+    let downloadBusy = false;
+
+    function formatBytes(bytes) {
+        const value = Math.max(0, Number(bytes || 0));
+        if (value < 1024) return `${value.toFixed(0)} B`;
+        if (value < 1048576) return `${(value / 1024).toFixed(value < 10240 ? 1 : 0)} KB`;
+        if (value < 1073741824) return `${(value / 1048576).toFixed(value < 10485760 ? 2 : 1)} MB`;
+        return `${(value / 1073741824).toFixed(2)} GB`;
+    }
+
+    function percentOf(current, total) {
+        if (!total) return 0;
+        return Math.max(0, Math.min(100, Math.round((current / total) * 100)));
+    }
+
+    function setProgress(bar, percentNode, bytesNode, current, total) {
+        const percent = percentOf(current, total);
+        if (bar) bar.style.width = `${percent}%`;
+        if (percentNode) percentNode.textContent = `${percent}%`;
+        if (bytesNode) bytesNode.textContent = `${formatBytes(current)} / ${formatBytes(total)}`;
+    }
+
+    function showError(message) {
+        if (!errorBox) return;
+        errorBox.textContent = message || 'Terjadi kesalahan transfer.';
+        errorBox.hidden = false;
+    }
+
+    function clearError() {
+        if (errorBox) errorBox.hidden = true;
+    }
+
+    function renderConnection(data) {
+        const connected = Boolean(data.other_connected);
+        connectionBadge.className = `badge ${connected ? 'success' : 'warning'} dot`;
+        connectionBadge.textContent = connected ? 'Terhubung' : 'Menunggu perangkat';
+        otherState.classList.toggle('is-connected', connected);
+        const title = otherState.querySelector('strong');
+        const detail = otherState.querySelector('small');
+        if (title) title.textContent = connected ? 'Perangkat lain tersambung' : 'Menunggu perangkat lain';
+        if (detail) detail.textContent = connected && data.other_ip
+            ? `IP ${data.other_ip}`
+            : 'Pastikan kedua perangkat memakai Wi-Fi yang sama';
+        otherSummary.className = connected ? 'lan-text-success' : 'lan-text-warning';
+        otherSummary.textContent = connected ? 'Tersambung' : 'Menunggu koneksi';
+    }
+
+    function renderOwnFile(file) {
+        const ready = file && file.state === 'ready';
+        ownFilePanel.hidden = !ready;
+        if (!ready) return;
+
+        ownFilename.textContent = file.filename || 'File';
+        const total = Number(file.transfer_total || file.bytes || 0);
+        const transferred = Number(file.transferred_bytes || 0);
+        const state = file.transfer_state || 'ready';
+        let status = `Siap dikirim · ${formatBytes(file.bytes)}`;
+        let current = 0;
+
+        if (state === 'downloading') {
+            status = 'Sedang diterima perangkat lain';
+            current = transferred;
+        } else if (state === 'completed') {
+            status = `Terkirim · diterima ${file.download_count || 1} kali`;
+            current = total;
+        } else if (state === 'error' || state === 'cancelled') {
+            status = 'Transfer terakhir tidak selesai';
+            current = transferred;
+        }
+
+        ownTransferStatus.textContent = status;
+        ownFileBytes.textContent = `${formatBytes(file.bytes)} · ${file.download_count || 0} transfer selesai`;
+        setProgress(ownTransferBar, ownTransferPercent, null, current, total || file.bytes);
+    }
+
+    function renderIncomingFile(file) {
+        const ready = file && file.state === 'ready';
+        incomingEmpty.hidden = ready;
+        incomingPanel.hidden = !ready;
+        incomingBadge.className = `badge ${ready ? 'success' : 'warning'} dot`;
+        incomingBadge.textContent = ready ? 'File siap' : 'Menunggu file';
+        incomingFile = ready ? file : null;
+
+        if (!ready) return;
+        incomingFilename.textContent = file.filename || 'File';
+        incomingSize.textContent = formatBytes(file.bytes);
+        receiveButton.disabled = downloadBusy;
+    }
+
+    async function pollStatus() {
+        if (pollBusy) return;
+        pollBusy = true;
+        try {
+            const response = await fetch(statusUrl, {cache: 'no-store'});
+            const data = await response.json();
+            if (!response.ok || !data.ok) {
+                throw new Error(data.error || 'Sesi FYY Share berakhir.');
+            }
+            renderConnection(data);
+            renderOwnFile(data.own_file);
+            renderIncomingFile(data.incoming_file);
+        } catch (error) {
+            connectionBadge.className = 'badge danger dot';
+            connectionBadge.textContent = 'Koneksi terputus';
+        } finally {
+            pollBusy = false;
+        }
+    }
+
+    fileInput?.addEventListener('change', () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) return;
+        fileName.textContent = file.name;
+        fileHint.textContent = `${formatBytes(file.size)} · siap dikirim melalui LAN`;
+        if (file.size > maxBytes) {
+            showError(`Ukuran file melebihi batas ${formatBytes(maxBytes)}.`);
+        } else {
+            clearError();
+        }
+    });
+
+    uploadForm?.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) {
+            showError('Pilih file terlebih dahulu.');
+            return;
+        }
+        if (file.size > maxBytes) {
+            showError(`Ukuran file melebihi batas ${formatBytes(maxBytes)}.`);
+            return;
+        }
+
+        clearError();
+        uploadProgress.hidden = false;
+        uploadStatus.textContent = 'Mengirim ke server lokal...';
+        setProgress(uploadBar, uploadPercent, uploadBytes, 0, file.size);
+        uploadButton.disabled = true;
+        uploadButton.classList.add('is-loading');
+        const buttonLabel = uploadButton.querySelector('span');
+        if (buttonLabel) buttonLabel.textContent = 'Mengirim...';
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', uploadUrl, true);
+        xhr.responseType = 'json';
+        xhr.upload.onprogress = (progressEvent) => {
+            if (!progressEvent.lengthComputable) return;
+            setProgress(uploadBar, uploadPercent, uploadBytes, progressEvent.loaded, progressEvent.total);
+        };
+        xhr.onload = () => {
+            uploadButton.disabled = false;
+            uploadButton.classList.remove('is-loading');
+            if (buttonLabel) buttonLabel.textContent = 'Kirim File';
+            const data = xhr.response || {};
+            if (xhr.status < 200 || xhr.status >= 300 || !data.ok) {
+                uploadStatus.textContent = 'Gagal mengirim file';
+                showError(data.error || 'File gagal dikirim.');
+                return;
+            }
+            uploadStatus.textContent = 'File siap diterima';
+            setProgress(uploadBar, uploadPercent, uploadBytes, file.size, file.size);
+            fileInput.value = '';
+            fileName.textContent = 'Klik untuk memilih file';
+            fileHint.textContent = 'File tetap berada di jaringan Wi-Fi lokal';
+            renderOwnFile(data.file);
+            window.setTimeout(() => { uploadProgress.hidden = true; }, 1400);
+            pollStatus();
+        };
+        xhr.onerror = () => {
+            uploadButton.disabled = false;
+            uploadButton.classList.remove('is-loading');
+            if (buttonLabel) buttonLabel.textContent = 'Kirim File';
+            uploadStatus.textContent = 'Koneksi upload terputus';
+            showError('Tidak dapat mengirim file ke server lokal.');
+        };
+
+        const formData = new FormData();
+        formData.append('file', file, file.name);
+        xhr.send(formData);
+    });
+
+    deleteOwnButton?.addEventListener('click', async () => {
+        if (!window.confirm('Hapus file yang sedang dibagikan?')) return;
+        try {
+            const response = await fetch(deleteOwnUrl, {method: 'POST'});
+            const data = await response.json();
+            if (!response.ok || !data.ok) throw new Error(data.error || 'Gagal menghapus file.');
+            ownFilePanel.hidden = true;
+            pollStatus();
+        } catch (error) {
+            showError(error.message);
+        }
+    });
+
+    async function reportDownloadProgress(received, total, state, transferId) {
+        try {
+            await fetch(progressUrl, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    received,
+                    total,
+                    state,
+                    transfer_id: transferId
+                }),
+                cache: 'no-store'
+            });
+        } catch (error) {
+            // Progres lokal tetap berjalan meskipun laporan ke perangkat lain gagal.
+        }
+    }
+
+    receiveButton?.addEventListener('click', async () => {
+        if (!incomingFile || !incomingFile.download_url || downloadBusy) return;
+        downloadBusy = true;
+        clearError();
+        receiveButton.disabled = true;
+        const buttonLabel = receiveButton.querySelector('span');
+        if (buttonLabel) buttonLabel.textContent = 'Menerima...';
+        downloadProgress.hidden = false;
+        downloadStatus.textContent = 'Menghubungkan transfer...';
+
+        const transferId = (window.crypto && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        let received = 0;
+        let total = Number(incomingFile.bytes || 0);
+        let lastReportAt = 0;
+
+        try {
+            const response = await fetch(incomingFile.download_url, {cache: 'no-store'});
+            if (!response.ok) throw new Error(`Download gagal (HTTP ${response.status}).`);
+            total = Number(response.headers.get('Content-Length')) || total;
+            const contentType = response.headers.get('Content-Type') || incomingFile.content_type || 'application/octet-stream';
+            const chunks = [];
+
+            await reportDownloadProgress(0, total, 'downloading', transferId);
+            downloadStatus.textContent = 'Menerima file melalui Wi-Fi...';
+
+            if (response.body && response.body.getReader) {
+                const reader = response.body.getReader();
+                while (true) {
+                    const result = await reader.read();
+                    if (result.done) break;
+                    chunks.push(result.value);
+                    received += result.value.byteLength;
+                    setProgress(downloadBar, downloadPercent, downloadBytes, received, total);
+                    const now = Date.now();
+                    if (now - lastReportAt >= 350) {
+                        lastReportAt = now;
+                        reportDownloadProgress(received, total, 'downloading', transferId);
+                    }
+                }
+            } else {
+                const blobFallback = await response.blob();
+                received = blobFallback.size;
+                chunks.push(new Uint8Array(await blobFallback.arrayBuffer()));
+                setProgress(downloadBar, downloadPercent, downloadBytes, received, total || received);
+            }
+
+            const blob = new Blob(chunks, {type: contentType});
+            const objectUrl = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = objectUrl;
+            anchor.download = incomingFile.filename || 'fyy-share-file';
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+
+            const completedTotal = total || received;
+            setProgress(downloadBar, downloadPercent, downloadBytes, completedTotal, completedTotal);
+            downloadStatus.textContent = 'Transfer selesai';
+            await reportDownloadProgress(completedTotal, completedTotal, 'completed', transferId);
+            if (buttonLabel) buttonLabel.textContent = 'Terima Lagi';
+        } catch (error) {
+            downloadStatus.textContent = 'Transfer gagal';
+            await reportDownloadProgress(received, total, 'error', transferId);
+            showError(error.message || 'File gagal diterima.');
+            if (buttonLabel) buttonLabel.textContent = 'Coba Lagi';
+        } finally {
+            downloadBusy = false;
+            receiveButton.disabled = false;
+            pollStatus();
+        }
+    });
+
+    document.getElementById('copyShareLink')?.addEventListener('click', async () => {
+        const field = document.getElementById('fyyShareUrl');
+        try {
+            await navigator.clipboard.writeText(field.value);
+        } catch (error) {
+            field.select();
+            document.execCommand('copy');
+        }
+    });
+
+    pollStatus();
+    window.setInterval(pollStatus, 1000);
+})();
+</script>

@@ -1,0 +1,171 @@
+{% extends 'base.html' %}
+{% block title %}Image Splitter{% endblock %}
+{% block breadcrumb %}Tools / Image Splitter{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-text">
+        <span class="eyebrow">Tools</span>
+        <h1 class="hero-title">Image <span class="accent">Splitter</span></h1>
+        <p class="hero-sub">Potong gambar secara vertikal, horizontal, atau grid. Setiap blok disimpan sebagai PNG lossless tanpa resize.</p>
+    </div>
+</section>
+
+{% if error %}
+<div class="alert danger section-gap">{{ error }}</div>
+{% endif %}
+
+<section class="grid ytmp3-layout section-gap">
+    <section class="col-8 card">
+        <div class="card-head">
+            <div class="card-title-wrap">
+                <span class="eyebrow">Image Tools</span>
+                <h2 class="card-title">Split Image</h2>
+            </div>
+            <span class="badge success dot">PNG Lossless</span>
+        </div>
+
+        <form method="POST" enctype="multipart/form-data" class="splitter-form" id="imageSplitterForm">
+            <label class="remove-bg-drop" for="splitterFile">
+                <input id="splitterFile" name="image" type="file" accept="image/*" required>
+                <span class="remove-bg-drop-icon">
+                    <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>
+                </span>
+                <strong id="splitterFileName">Klik untuk memilih gambar</strong>
+                <span>Hasil blok dibuat sebagai PNG tanpa kompresi lossy</span>
+            </label>
+
+            <fieldset class="splitter-direction-fieldset">
+                <legend class="field-label">Arah Pemotongan</legend>
+                <div class="splitter-direction-grid">
+                    <label class="splitter-direction-option">
+                        <input type="radio" name="direction" value="vertical" {% if form_values.direction == 'vertical' %}checked{% endif %}>
+                        <span class="splitter-direction-icon"><svg viewBox="0 0 24 24"><path d="M12 3v18M4 6h5v12H4zM15 6h5v12h-5z"/></svg></span>
+                        <strong>Vertikal</strong>
+                        <small>Potong menjadi beberapa kolom</small>
+                    </label>
+                    <label class="splitter-direction-option">
+                        <input type="radio" name="direction" value="horizontal" {% if form_values.direction == 'horizontal' %}checked{% endif %}>
+                        <span class="splitter-direction-icon"><svg viewBox="0 0 24 24"><path d="M3 12h18M6 4h12v5H6zM6 15h12v5H6z"/></svg></span>
+                        <strong>Horizontal</strong>
+                        <small>Potong menjadi beberapa baris</small>
+                    </label>
+                    <label class="splitter-direction-option">
+                        <input type="radio" name="direction" value="grid" {% if form_values.direction == 'grid' %}checked{% endif %}>
+                        <span class="splitter-direction-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 3v18M3 12h18"/></svg></span>
+                        <strong>Grid</strong>
+                        <small>Potong baris dan kolom sekaligus</small>
+                    </label>
+                </div>
+            </fieldset>
+
+            <div class="form-grid finance-form-grid">
+                <div class="field">
+                    <label class="field-label" for="splitBy">Split by...</label>
+                    <select class="select" id="splitBy" name="split_by">
+                        <option value="quantity" {% if form_values.split_by == 'quantity' %}selected{% endif %}>Quantity of blocks</option>
+                        <option value="pixels" {% if form_values.split_by == 'pixels' %}selected{% endif %}>Ukuran blok (pixel)</option>
+                    </select>
+                </div>
+                <div class="field splitter-field splitter-quantity-single">
+                    <label class="field-label" for="splitQuantity">Quantity of blocks</label>
+                    <input class="input" id="splitQuantity" type="number" name="quantity" min="2" max="32" value="{{ form_values.quantity }}">
+                </div>
+                <div class="field splitter-field splitter-grid-columns">
+                    <label class="field-label" for="splitColumns">Jumlah Kolom</label>
+                    <input class="input" id="splitColumns" type="number" name="columns" min="1" max="16" value="{{ form_values.columns }}">
+                </div>
+                <div class="field splitter-field splitter-grid-rows">
+                    <label class="field-label" for="splitRows">Jumlah Baris</label>
+                    <input class="input" id="splitRows" type="number" name="rows" min="1" max="16" value="{{ form_values.rows }}">
+                </div>
+                <div class="field splitter-field splitter-block-width">
+                    <label class="field-label" for="blockWidth">Lebar Blok (px)</label>
+                    <input class="input" id="blockWidth" type="number" name="block_width" min="1" value="{{ form_values.block_width }}">
+                </div>
+                <div class="field splitter-field splitter-block-height">
+                    <label class="field-label" for="blockHeight">Tinggi Blok (px)</label>
+                    <input class="input" id="blockHeight" type="number" name="block_height" min="1" value="{{ form_values.block_height }}">
+                </div>
+                <div class="field">
+                    <label class="field-label" for="outputMode">Output</label>
+                    <select class="select" id="outputMode" name="output_mode">
+                        <option value="zip" {% if form_values.output_mode == 'zip' %}selected{% endif %}>Download ZIP langsung</option>
+                        <option value="individual" {% if form_values.output_mode == 'individual' %}selected{% endif %}>Download satu per satu</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <span class="spacer"></span>
+                <button class="btn btn--primary" type="submit" id="splitterSubmit">
+                    <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="m8.7 7.5 11.3 6.5M8.7 16.5 20 10"/></svg>
+                    <span>Split Image</span>
+                </button>
+            </div>
+        </form>
+    </section>
+
+    <aside class="col-4 card tool-side-card">
+        <div class="card-head">
+            <div class="card-title-wrap"><span class="eyebrow">Engine</span><h2 class="card-title">Pillow</h2></div>
+        </div>
+        <div class="provider-stack">
+            <div class="provider-row">
+                <div class="provider-dot">PIL</div>
+                <div><strong>Pixel-accurate Crop</strong><span>Tanpa resize · output PNG lossless</span></div>
+            </div>
+        </div>
+        <div class="tool-note">
+            <strong>Vertical / horizontal / grid</strong>
+            <p>Pilih berdasarkan jumlah blok atau ukuran piksel. Sisa piksel tetap dimasukkan ke blok terakhir agar tidak ada bagian gambar yang hilang.</p>
+        </div>
+        <div class="tool-note">
+            <strong>Output satuan</strong>
+            <p>Mode satuan menyimpan hasil sementara selama {{ ttl_hours }} jam agar tiap blok dapat di-download sendiri atau sekaligus dalam ZIP.</p>
+        </div>
+    </aside>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(() => {
+    const form = document.getElementById('imageSplitterForm');
+    const file = document.getElementById('splitterFile');
+    const fileName = document.getElementById('splitterFileName');
+    const splitBy = document.getElementById('splitBy');
+    const submit = document.getElementById('splitterSubmit');
+
+    const updateFields = () => {
+        const direction = form.querySelector('input[name="direction"]:checked')?.value || 'vertical';
+        const method = splitBy.value;
+        const show = (selector, visible) => {
+            document.querySelectorAll(selector).forEach((node) => {
+                node.hidden = !visible;
+                node.querySelectorAll('input').forEach((input) => input.disabled = !visible);
+            });
+        };
+        show('.splitter-quantity-single', method === 'quantity' && direction !== 'grid');
+        show('.splitter-grid-columns', method === 'quantity' && direction === 'grid');
+        show('.splitter-grid-rows', method === 'quantity' && direction === 'grid');
+        show('.splitter-block-width', method === 'pixels' && direction !== 'horizontal');
+        show('.splitter-block-height', method === 'pixels' && direction !== 'vertical');
+    };
+
+    file?.addEventListener('change', () => {
+        const selected = file.files && file.files[0];
+        if (selected) fileName.textContent = selected.name;
+    });
+    splitBy?.addEventListener('change', updateFields);
+    form.querySelectorAll('input[name="direction"]').forEach((input) => input.addEventListener('change', updateFields));
+    form?.addEventListener('submit', () => {
+        submit.disabled = true;
+        submit.classList.add('is-loading');
+        const label = submit.querySelector('span');
+        if (label) label.textContent = 'Memotong...';
+    });
+    updateFields();
+})();
+</script>
+{% endblock %}
